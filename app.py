@@ -9,7 +9,7 @@ import streamlit as st
 from amap_provider import AMapProvider
 from building_engine import BuildingEngine
 from community_engine import CommunityEngine
-from community_repository import CommunityRepository
+from community_repository import CommunityMatch, CommunityRepository
 from config import AMAP_CITY, BACKGROUND_FILE, COMMUNITIES_FILE, COMMUNITY_ZONES_FILE, DEFAULT_ZONE_CODE, get_amap_api_key
 from score_pipeline import ScorePipeline
 from zone_engine import ZoneEngine
@@ -142,14 +142,74 @@ def load_services() -> tuple[CommunityRepository, ZoneRepository, ScorePipeline,
     return community_repo, zone_repo, pipeline, amap_provider
 
 
-def try_local_match(query: str, community_repo: CommunityRepository) -> dict[str, Any] | None:
-    match = community_repo.search(query)
+def try_local_match(query: str, community_repo: CommunityRepository, district: str = "", subdistrict: str = "", location: tuple[float, float] | None = None) -> dict[str, Any] | None:
+    match = community_repo.search(query, district=district, subdistrict=subdistrict, location=location)
     if not match:
         return None
     row = dict(match.row)
     row["_match_source"] = f"本地小区库 / {match.source}"
     row["_match_confidence"] = round(match.score, 2)
+    row["_query_used"] = match.query_used
+    if match.distance_km is not None:
+        row["_distance_km"] = round(match.distance_km, 2)
     return row
+
+
+def _parse_location(location_text: str | None) -> tuple[float, float] | None:
+    if not location_text:
+        return None
+    try:
+        lon, lat = [float(x) for x in str(location_text).split(",", 1)]
+        return lon, lat
+    except Exception:
+        return None
+
+
+def _extract_context_from_regeo(regeo: dict[str, Any] | None) -> tuple[str, str, list[str], tuple[float, float] | None]:
+    if not regeo:
+        return "", "", [], None
+    ac = regeo.get("addressComponent", {}) if isinstance(regeo, dict) else {}
+    district = str(ac.get("district", "")).strip()
+    township = str(ac.get("township", "")).strip()
+    location = _parse_location(str(regeo.get("formatted_address", "")))
+    pois = regeo.get("pois", []) if isinstance(regeo.get("pois", []), list) else []
+    aois = regeo.get("aois", []) if isinstance(regeo.get("aois", []), list) else []
+    roads = regeo.get("roads", []) if isinstance(regeo.get("roads", []), list) else []
+
+    candidate_texts: list[str] = []
+    for poi in pois[:5]:
+        name = str(poi.get("name", "")).strip()
+        address = str(poi.get("address", "")).strip()
+        if name:
+            candidate_texts.append(name)
+        if district and name:
+            candidate_texts.append(f"{district}{name}")
+        if district and address:
+            candidate_texts.append(f"{district}{address}")
+    for aoi in aois[:3]:
+        name = str(aoi.get("name", "")).strip()
+        if name:
+            candidate_texts.append(name)
+            if district:
+                candidate_texts.append(f"{district}{name}")
+    for road in roads[:2]:
+        name = str(road.get("name", "")).strip()
+        if district and township and name:
+            candidate_texts.append(f"{district}{township}{name}")
+    return district, township, candidate_texts, None
+
+
+def _pick_best_match(candidates: list[str], community_repo: CommunityRepository, district: str = "", subdistrict: str = "", location: tuple[float, float] | None = None) -> CommunityMatch | None:
+    best: CommunityMatch | None = None
+    for candidate in candidates:
+        candidate = str(candidate).strip()
+        if not candidate:
+            continue
+        threshold = 0.46 if location or district else 0.58
+        match = community_repo.search(candidate, threshold=threshold, district=district, subdistrict=subdistrict, location=location)
+        if match and (best is None or match.score > best.score):
+            best = match
+    return best
 
 
 def try_amap_normalize(query: str, amap_provider: AMapProvider, community_repo: CommunityRepository) -> tuple[dict[str, Any] | None, dict[str, Any] | None, list[dict[str, Any]]]:
@@ -157,30 +217,61 @@ def try_amap_normalize(query: str, amap_provider: AMapProvider, community_repo: 
         return None, None, []
 
     tips = amap_provider.input_tips(query)
-    candidate_texts: list[str] = []
-    for tip in tips[:5]:
-        parts = [str(tip.get("district", "")).strip(), str(tip.get("name", "")).strip(), str(tip.get("address", "")).strip()]
-        candidate_text = " ".join(part for part in parts if part)
-        if candidate_text:
-            candidate_texts.append(candidate_text)
+    candidates: list[str] = [query]
+    district = ""
+    subdistrict = ""
+    location: tuple[float, float] | None = None
 
-    for candidate in candidate_texts + [query]:
-        local_match = try_local_match(candidate, community_repo)
-        if local_match:
-            local_match["_match_source"] = "高德候选归一化 → 本地小区库"
-            return local_match, None, tips
+    for tip in tips[:8]:
+        tip_name = str(tip.get("name", "")).strip()
+        tip_district = str(tip.get("district", "")).strip()
+        tip_address = str(tip.get("address", "")).strip()
+        tip_location = _parse_location(str(tip.get("location", "")).strip())
+        if not district and tip_district:
+            district = tip_district
+        if tip_name:
+            candidates.append(tip_name)
+        if tip_district and tip_name:
+            candidates.append(f"{tip_district}{tip_name}")
+        if tip_district and tip_address:
+            candidates.append(f"{tip_district}{tip_address}")
+        if tip_location and location is None:
+            location = tip_location
+
+    best = _pick_best_match(candidates, community_repo, district=district, subdistrict=subdistrict, location=location)
+    if best:
+        row = dict(best.row)
+        row["_match_source"] = f"高德候选归一化 → 本地小区库 / {best.source}"
+        row["_match_confidence"] = round(best.score, 2)
+        row["_query_used"] = best.query_used
+        if best.distance_km is not None:
+            row["_distance_km"] = round(best.distance_km, 2)
+        return row, None, tips
 
     geocode = amap_provider.geocode(query)
     if not geocode:
         return None, None, tips
-    location = str(geocode.get("location", "")).strip()
-    regeo = amap_provider.reverse_geocode(location) if location else None
 
-    for candidate in [str(geocode.get("formatted_address", ""))]:
-        local_match = try_local_match(candidate, community_repo)
-        if local_match:
-            local_match["_match_source"] = "高德地理编码 → 本地小区库"
-            return local_match, regeo, tips
+    formatted = str(geocode.get("formatted_address", "")).strip()
+    location_text = str(geocode.get("location", "")).strip()
+    location = _parse_location(location_text) or location
+    district = district or str(geocode.get("district", "")).strip()
+
+    regeo = amap_provider.reverse_geocode(location_text) if location_text else None
+    regeo_district, regeo_subdistrict, regeo_candidates, _ = _extract_context_from_regeo(regeo)
+    district = district or regeo_district
+    subdistrict = subdistrict or regeo_subdistrict
+
+    all_candidates = candidates + [formatted] + regeo_candidates
+    best = _pick_best_match(all_candidates, community_repo, district=district, subdistrict=subdistrict, location=location)
+    if best:
+        row = dict(best.row)
+        row["_match_source"] = f"高德标准化地址 → 本地小区库 / {best.source}"
+        row["_match_confidence"] = round(best.score, 2)
+        row["_query_used"] = best.query_used
+        if best.distance_km is not None:
+            row["_distance_km"] = round(best.distance_km, 2)
+        return row, regeo, tips
 
     return None, regeo, tips
 
@@ -203,7 +294,14 @@ def render_result(community_row: dict[str, Any], zone_options: list[dict[str, An
 
     with left:
         st.subheader(str(community_row.get("community_name", "目标小区")))
-        st.caption(f"命中来源：{community_row.get('_match_source', '本地小区库')}｜基础分主键：{community_row.get('community_code', '-')}")
+        caption = f"命中来源：{community_row.get('_match_source', '本地小区库')}｜基础分主键：{community_row.get('community_code', '-')}"
+        if community_row.get("_match_confidence"):
+            caption += f"｜置信度：{community_row.get('_match_confidence')}"
+        if community_row.get("_distance_km") is not None:
+            caption += f"｜坐标距离：{community_row.get('_distance_km')} km"
+        st.caption(caption)
+        if community_row.get("_query_used"):
+            st.caption(f"此次用于命中的标准化文本：{community_row.get('_query_used')}")
         community_engine = CommunityEngine()
         chips = community_engine.summarize(community_row)
         if chips:
@@ -244,7 +342,7 @@ def render_amap_panel(amap_provider: AMapProvider, tips: list[dict[str, Any]], r
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.subheader("高德接口：当前这一版怎么用")
     if amap_provider.enabled():
-        st.success("已检测到高德 Web 服务 Key。当前代码会按顺序尝试：输入提示 → 地理编码 → 逆地理编码。")
+        st.success("已检测到高德 Web 服务 Key。当前代码会按顺序尝试：输入提示 → 地理编码 → 逆地理编码，并把标准化结果自动映射到本地小区库。")
     else:
         st.warning("当前未配置高德 Key。此时仍可使用本地小区库搜索，但不会触发地址标准化与候选提示。")
 
@@ -263,7 +361,7 @@ def render_amap_panel(amap_provider: AMapProvider, tips: list[dict[str, Any]], r
 
     if tips:
         with st.expander("这次搜索拿到的高德候选", expanded=False):
-            for tip in tips[:5]:
+            for tip in tips[:6]:
                 st.write(f"- {tip.get('name', '')}｜{tip.get('district', '')} {tip.get('address', '')}")
 
     if regeo:
@@ -314,7 +412,10 @@ def main() -> None:
             else:
                 st.warning("已命中小区，但尚未录入该小区的分区规则。")
         else:
-            st.warning("当前没有命中本地小区库。若你已经配置高德 Key，可以继续补更完整的地址；否则先把该小区录入 communities.csv。")
+            if amap_provider.enabled():
+                st.warning("本地小区库没有命中；高德已完成标准化尝试，但仍未能自动映射到 communities.csv。建议补充更完整地址，或把该小区录入本地小区库。")
+            else:
+                st.warning("当前没有命中本地小区库。若你已经配置高德 Key，可以继续补更完整的地址；否则先把该小区录入 communities.csv。")
 
     elif submit:
         st.info("先输入一个北京小区名或详细地址。")
