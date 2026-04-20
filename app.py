@@ -14,7 +14,7 @@ from score_engine import ScoreEngine
 from text_match import strip_unit_details
 from zone_repository import ZoneRepository
 
-st.set_page_config(page_title="QuietBJ｜楼栋级静噪分", page_icon="🔇", layout="wide")
+st.set_page_config(page_title="QuietBJ｜安宁的北京", page_icon="🔇", layout="wide")
 
 
 def file_to_base64(path: str | Path) -> str:
@@ -29,14 +29,18 @@ def render_styles() -> None:
         .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stToolbar"], section.main {{ background: transparent !important; }}
         .block-container {{max-width:100% !important; padding-top:0 !important; padding-left: 2rem !important; padding-right: 2rem !important;}}
         .bg-layer {{position: fixed; inset: 0; z-index: -20; pointer-events:none; background-image: linear-gradient(180deg, rgba(8,15,12,0.38), rgba(8,15,12,0.52)), url("data:image/jpeg;base64,{bg_base64}"); background-size: cover; background-position: center center; background-repeat:no-repeat;}}
-        .topbar {{display:flex; justify-content:space-between; align-items:center; padding:14px 0 0; color:#fff;}}
+        .topbar {{display:flex; justify-content:space-between; align-items:center; padding:10px 0 0; color:#fff;}}
         .brand {{font-size:26px; font-weight:800; letter-spacing:0.04em;}}
-        .hero {{min-height: 38vh; display:flex; align-items:flex-start; justify-content:center; padding-top:6vh;}}
-        .hero-box {{width:min(1020px,95%); text-align:center; color:#fff; margin:0 auto;}}
-        .hero-title {{font-size: clamp(36px, 6vw, 72px); font-weight: 800; line-height: 1.04; margin:0;}}
-        .hero-sub {{font-size:18px; line-height:1.75; max-width:840px; margin:16px auto 20px; opacity:0.95;}}
-        .glass-card {{background: rgba(255,255,255,0.86); backdrop-filter: blur(10px); border:1px solid rgba(255,255,255,0.38); border-radius:24px; box-shadow:0 24px 70px rgba(0,0,0,0.16); padding:18px 18px 10px;}}
-        .section-card {{background: rgba(255,255,255,0.92); border:1px solid rgba(20,36,28,0.08); border-radius:22px; padding:26px 24px; box-shadow:0 12px 40px rgba(26,39,31,0.08);}}
+        .topbar-note {{font-size:13px; letter-spacing:0.08em; text-transform:uppercase; opacity:0.88;}}
+        .hero {{min-height: 26vh; display:flex; align-items:flex-start; justify-content:center; padding-top:2.4vh; margin-bottom: 4px;}}
+        .hero-box {{width:min(1100px,96%); text-align:center; color:#fff; margin:0 auto;}}
+        .hero-kicker {{font-size:13px; letter-spacing:0.22em; text-transform:uppercase; opacity:0.90; margin-bottom:10px;}}
+        .hero-title {{font-size: clamp(40px, 6vw, 78px); font-weight: 800; line-height: 1.02; margin:0; text-shadow: 0 8px 32px rgba(0,0,0,0.22);}}
+        .hero-sub {{font-size:17px; line-height:1.8; max-width:960px; margin:14px auto 0; color:rgba(255,255,255,0.96);}}
+        .hero-sub strong {{color:#ffffff;}}
+        .hero-note {{display:inline-block; margin-top:14px; padding:10px 14px; border-radius:999px; background:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.18); color:#fff; font-size:13px; letter-spacing:0.02em;}}
+        .glass-card {{background: rgba(255,255,255,0.88); backdrop-filter: blur(12px); border:1px solid rgba(255,255,255,0.42); border-radius:24px; box-shadow:0 24px 80px rgba(0,0,0,0.18); padding:16px 16px 8px; max-width: 980px; margin: 0 auto;}}
+        .section-card {{background: rgba(255,255,255,0.94); border:1px solid rgba(20,36,28,0.08); border-radius:22px; padding:22px 22px; box-shadow:0 12px 40px rgba(26,39,31,0.08);}}
         .score-shell {{background: linear-gradient(180deg, rgba(19,60,42,0.96), rgba(23,81,58,0.96)); color:#fff; border-radius:22px; padding:28px; box-shadow:0 18px 45px rgba(14,44,31,0.25);}}
         .score-number {{font-size:84px; line-height:1; font-weight:800; margin:10px 0 6px;}}
         .score-kicker {{opacity:0.78; letter-spacing:0.12em; text-transform:uppercase; font-size:12px;}}
@@ -56,8 +60,8 @@ def render_styles() -> None:
 
 
 def render_header() -> None:
-    st.markdown('<div class="topbar"><div class="brand">QuietBJ</div><div>楼栋级计算实验版</div></div>', unsafe_allow_html=True)
-    st.markdown('<div class="hero"><div class="hero-box"><h1 class="hero-title">搜索静噪分™</h1><div class="hero-sub">小区识别与噪音点计算分开处理：<strong>小区匹配</strong>用于识别对象，<strong>完整楼栋地址</strong>用于向高德取更接近楼栋的坐标，再测算最近高速、主干路、学校、医院、底商、餐饮、轨道交通的距离。</div></div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="topbar"><div class="brand">QuietBJ</div><div class="topbar-note">Residential Environment Intelligence</div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero"><div class="hero-box"><div class="hero-kicker">BEIJING RESIDENTIAL CALM INDEX</div><h1 class="hero-title">安宁的北京</h1><div class="hero-sub">这不是一个简单的地图搜索工具，而是一套面向居住决策的<strong>楼栋级环境评估引擎</strong>。系统会先识别小区，再保留完整楼栋地址向高德获取更接近楼栋的坐标，随后测算最近高速、主干路、学校、医院、底商、餐饮与轨道交通的距离，并按权重形成分数。</div><div class="hero-note">默认基础分 75 + 分区修正 + 建筑加分 − 周边噪音惩罚</div></div></div>', unsafe_allow_html=True)
 
 
 def parse_location_text(text: str | None) -> tuple[float, float] | None:
@@ -107,7 +111,7 @@ def main() -> None:
         st.rerun()
 
     if not submitted or not query.strip():
-        st.info('输入一个楼栋级地址后，程序会先去掉楼号匹配小区，再保留完整地址去高德拿更接近楼栋的坐标。')
+        st.info('输入一个楼栋级地址后，系统会先命中小区，再围绕完整楼栋地址测算更接近真实住感的外部噪音暴露。')
         return
 
     cleaned_query = strip_unit_details(query)
@@ -197,8 +201,8 @@ def main() -> None:
 
     # Noise points panel
     st.markdown('<div class="section-card" style="margin-top:16px;">', unsafe_allow_html=True)
-    st.subheader('楼栋级周边噪音点实验')
-    st.caption('你关心的不是小区中心，而是这栋楼离高速、主干路、学校、医院、底商等点有多近。下面这一层尽量围绕完整楼栋地址的高德坐标来算。')
+    st.subheader('楼栋级外部噪音暴露')
+    st.caption('你真正关心的不是小区中心点，而是这栋楼离高速、主干路、学校、医院、底商等嘈杂点有多近。下面这层尽量围绕完整楼栋地址的高德坐标来计算。')
     signals = noise_summary.get('signals', [])
     if signals:
         for sig in signals:
@@ -210,7 +214,7 @@ def main() -> None:
 
     # Diagnostics
     st.markdown('<div class="section-card" style="margin-top:16px;">', unsafe_allow_html=True)
-    st.subheader('核查：高德是否传回有效信息')
+    st.subheader('高德返回结果核查')
     d1, d2 = st.columns(2)
     with d1:
         st.markdown('**楼栋点位**')
