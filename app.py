@@ -454,7 +454,7 @@ def inject_css() -> None:
             position: sticky;
             top: 0;
             z-index: 20;
-            padding-top: 14px;
+            padding-top: 18px;
         }}
 
         .nav {{
@@ -502,12 +502,13 @@ def inject_css() -> None:
             display: flex;
             align-items: flex-start;
             justify-content: center;
-            padding: clamp(110px, 16vh, 170px) 0 4vh 0;
+            padding: 18px 0 0 0;
         }}
 
         .search-card {{
             width: min(980px, 90vw);
             margin: 0 auto;
+            transform: translateY(-8px);
             background: rgba(255,255,255,0.74);
             border: 1px solid rgba(255,255,255,0.28);
             backdrop-filter: blur(16px);
@@ -677,7 +678,7 @@ def inject_css() -> None:
             .page {{ padding: 0 16px 34px 16px; }}
             .nav {{ padding: 8px 12px; }}
             .nav-links {{ display: none; }}
-            .hero {{ min-height: calc(100vh - 66px); align-items: flex-start; padding: clamp(88px, 12vh, 120px) 0 4vh 0; }}
+            .hero {{ min-height: calc(100vh - 66px); align-items: flex-start; padding: 14px 0 0 0; }}
             .search-card {{ width: 94vw; padding: 24px 14px 20px 14px; border-radius: 20px; }}
             .search-title {{ font-size: 2.15rem; }}
             .search-copy {{ font-size: 0.95rem; margin-bottom: 16px; }}
