@@ -36,10 +36,9 @@ def render_styles() -> None:
         .hero-title {{font-size: clamp(44px, 6vw, 82px); font-weight: 800; line-height: 1.02; margin: 0; text-shadow: 0 8px 32px rgba(0,0,0,0.22);}}
         .hero-sub {{font-size: 16px; line-height: 1.8; max-width: 760px; margin: 14px auto 0; color: rgba(255,255,255,0.95);}}
         .hero-note {{display: inline-block; margin-top: 16px; padding: 10px 16px; border-radius: 999px; background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.20); color: rgba(255,255,255,0.94); font-size: 12px; letter-spacing: 0.03em;}}
-        .search-wrap {{margin-top: 18px; margin-bottom: 28px;}}
-        .glass-card {{background: rgba(255,255,255,0.88); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,0.40); border-radius: 24px; box-shadow: 0 24px 80px rgba(0,0,0,0.18); padding: 16px 16px 10px; max-width: 860px; margin: 0 auto;}}
-        .search-label {{font-size: 13px; color: rgba(31,40,36,0.70); text-align: left; margin: 2px 4px 8px;}}
-        .search-footnote {{font-size: 13px; color: #6d766f; text-align: left; padding: 6px 4px 4px;}}
+        .search-wrap {margin-top: 18px; margin-bottom: 18px;}
+        .glass-card {background: rgba(255,255,255,0.86); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,0.34); border-radius: 24px; box-shadow: 0 24px 80px rgba(0,0,0,0.16); padding: 14px 14px 10px; max-width: 820px; margin: 0 auto;}
+        .search-footnote {font-size: 12px; color: #748078; text-align: left; padding: 4px 4px 2px;}
         .section-card {{background: rgba(255,255,255,0.95); border: 1px solid rgba(20,36,28,0.08); border-radius: 22px; padding: 22px 22px; box-shadow: 0 12px 40px rgba(26,39,31,0.08);}}
         .score-shell {{background: linear-gradient(180deg, rgba(19,60,42,0.97), rgba(23,81,58,0.96)); color: #fff; border-radius: 22px; padding: 28px; box-shadow: 0 18px 45px rgba(14,44,31,0.25);}}
         .score-number {{font-size: 84px; line-height: 1; font-weight: 800; margin: 10px 0 6px;}}
@@ -50,13 +49,14 @@ def render_styles() -> None:
         .tiny-note {{font-size: 13px; color: #778178;}}
         .anchor {{position: relative; top: -90px; visibility: hidden;}}
         .result-shell {{margin-top: 0;}}
-        div[data-testid="stTextInputRootElement"] input {{border-radius: 16px !important; height: 58px !important; font-size: 18px !important; border: 1px solid rgba(26,48,38,0.12) !important; box-shadow: none !important;}}
-        div[data-testid="stTextInputRootElement"] input::placeholder {{color: rgba(70,78,74,0.52) !important;}}
-        div[data-testid="InputInstructions"] {{display: none !important;}}
-        div[data-testid="stSelectbox"] > div {{border-radius: 14px !important;}}
-        div.stButton > button {{height: 52px; border-radius: 14px; font-weight: 700; box-shadow: none !important;}}
-        div.stButton > button[kind="primary"] {{background: #17382c !important; border: 1px solid #17382c !important; color: white !important;}}
-        div.stButton > button[kind="secondary"] {{background: rgba(255,255,255,0.60) !important; border: 1px solid rgba(27,48,38,0.10) !important; color: #6f7872 !important;}}
+        div[data-testid="stTextInputRootElement"] input {border-radius: 16px !important; height: 54px !important; font-size: 17px !important; border: 1px solid rgba(20,42,33,0.10) !important; box-shadow: none !important; background: rgba(255,255,255,0.96) !important;}
+        div[data-testid="stTextInputRootElement"] input::placeholder {color: rgba(70,78,74,0.44) !important;}
+        div[data-testid="InputInstructions"] {display: none !important;}
+        div[data-testid="stWidgetLabel"] {display: none !important;}
+        div[data-testid="stSelectbox"] > div {border-radius: 14px !important;}
+        div.stButton > button {height: 48px; border-radius: 14px; font-weight: 700; box-shadow: none !important;}
+        div.stButton > button[kind="primary"] {background: #17382c !important; border: 1px solid #17382c !important; color: white !important;}
+        div.stButton > button[kind="secondary"] {background: rgba(255,255,255,0.34) !important; border: 1px solid rgba(255,255,255,0.18) !important; color: rgba(255,255,255,0.88) !important;}
         @media (max-width: 900px) {{
             .block-container {{padding-left: 1rem !important; padding-right: 1rem !important;}}
             .hero-sub {{font-size: 15px;}}
@@ -109,16 +109,16 @@ def label_score(score: int) -> str:
 
 
 def render_search() -> tuple[str, bool, bool]:
-    left, center, right = st.columns([1.1, 4.8, 1.1])
+    left, center, right = st.columns([1.2, 4.4, 1.2])
     with center:
-        st.markdown('<div class="search-wrap"><div class="glass-card"><div class="search-label">输入北京小区或楼栋地址</div>', unsafe_allow_html=True)
+        st.markdown('<div class="search-wrap"><div class="glass-card">', unsafe_allow_html=True)
         with st.form('search_form', clear_on_submit=False):
             query = st.text_input(
-                '输入北京小区或楼栋地址',
-                placeholder='例如：新龙城6号楼 / 花家地西里2号楼',
+                'search_query',
+                placeholder='输入北京小区或楼栋地址，例如：新龙城6号楼 / 花家地西里2号楼',
                 label_visibility='collapsed',
             )
-            c1, c2 = st.columns([1.1, 0.9])
+            c1, c2 = st.columns([1.2, 0.8])
             with c1:
                 submitted = st.form_submit_button('开始查询', type='primary', use_container_width=True)
             with c2:
