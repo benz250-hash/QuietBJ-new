@@ -497,13 +497,13 @@ def inject_css() -> None:
             box-shadow: 0 10px 26px rgba(0,0,0,0.16);
         }}
 
-        .hero {{
+        .hero {
             min-height: calc(100vh - 92px);
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
-            padding: 2vh 0 10vh 0;
-        }}
+            padding: clamp(110px, 16vh, 170px) 0 4vh 0;
+        }
 
         .search-card {{
             width: min(980px, 90vw);
@@ -677,7 +677,7 @@ def inject_css() -> None:
             .page {{ padding: 0 16px 34px 16px; }}
             .nav {{ padding: 8px 12px; }}
             .nav-links {{ display: none; }}
-            .hero {{ min-height: calc(100vh - 66px); padding: 0 0 6vh 0; }}
+            .hero { min-height: calc(100vh - 66px); align-items: flex-start; padding: clamp(88px, 12vh, 120px) 0 4vh 0; }
             .search-card {{ width: 94vw; padding: 24px 14px 20px 14px; border-radius: 20px; }}
             .search-title {{ font-size: 2.15rem; }}
             .search-copy {{ font-size: 0.95rem; margin-bottom: 16px; }}
