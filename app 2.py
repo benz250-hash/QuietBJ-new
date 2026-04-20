@@ -102,14 +102,14 @@ def render_styles(result_mode: bool) -> None:
     st.markdown(
         f"""
         <style>
-        :root {
+        :root {{
             --font-display: "Songti SC", "Noto Serif SC", "Source Han Serif SC", serif;
             --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
-        }
-        html, body, [class*="css"], .stApp {
+        }}
+        html, body, [class*="css"], .stApp {{
             font-family: var(--font-sans) !important;
             color: #17211b;
-        }
+        }}
         .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stToolbar"], section.main {{
             background: {app_bg} !important;
         }}
@@ -128,13 +128,13 @@ def render_styles(result_mode: bool) -> None:
         }}
         .topbar {{display:flex; justify-content:space-between; align-items:center; padding:16px 0 0; color:white;}}
         .topbar.light {{color:#14211b; padding:18px 0 12px;}}
-        .brand {font-size:14px; font-weight:600; letter-spacing:.10em; opacity:.34; font-family: var(--font-sans) !important;}
+        .brand {{font-size:14px; font-weight:600; letter-spacing:.10em; opacity:.34; font-family: var(--font-sans) !important;}}
         .hero-wrap {{min-height:46vh; display:flex; align-items:flex-start; justify-content:center; padding-top:5vh; text-align:center; color:white;}}
-        .hero-kicker {font-size:11px; letter-spacing:.24em; text-transform:uppercase; opacity:.86; margin-bottom:12px; font-family: var(--font-sans) !important;}
-        .hero-title {font-size:clamp(42px,6vw,80px); font-weight:700; line-height:1.02; margin:0; text-shadow:0 8px 30px rgba(0,0,0,.24); font-family: var(--font-display) !important; letter-spacing:-0.02em;}
-        .hero-sub {max-width:760px; margin:14px auto 0; font-size:16px; line-height:1.72; color:rgba(255,255,255,.96); font-family: var(--font-sans) !important;}
-        .hero-note {display:inline-block; margin-top:16px; padding:10px 16px; border-radius:999px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.18); color:rgba(255,255,255,.92); font-size:11px; letter-spacing:.04em; font-family: var(--font-sans) !important;}
-        .compact-title {font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:#6f7c74; margin:4px 0 10px; font-family: var(--font-sans) !important;}
+        .hero-kicker {{font-size:11px; letter-spacing:.24em; text-transform:uppercase; opacity:.86; margin-bottom:12px; font-family: var(--font-sans) !important;}}
+        .hero-title {{font-size:clamp(42px,6vw,80px); font-weight:700; line-height:1.02; margin:0; text-shadow:0 8px 30px rgba(0,0,0,.24); font-family: var(--font-display) !important; letter-spacing:-0.02em;}}
+        .hero-sub {{max-width:760px; margin:14px auto 0; font-size:16px; line-height:1.72; color:rgba(255,255,255,.96); font-family: var(--font-sans) !important;}}
+        .hero-note {{display:inline-block; margin-top:16px; padding:10px 16px; border-radius:999px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.18); color:rgba(255,255,255,.92); font-size:11px; letter-spacing:.04em; font-family: var(--font-sans) !important;}}
+        .compact-title {{font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:#6f7c74; margin:4px 0 10px; font-family: var(--font-sans) !important;}}
         .result-page-intro {{color:#55635b; font-size:14px; line-height:1.7; margin-top:2px; margin-bottom:10px;}}
 
         div[data-testid="stTextInputRootElement"] input {{
@@ -162,14 +162,14 @@ def render_styles(result_mode: bool) -> None:
             backdrop-filter: {'blur(10px)' if not result_mode else 'none'};
             box-shadow: {'0 20px 60px rgba(0,0,0,0.14)' if not result_mode else '0 12px 26px rgba(16,24,19,0.06)'};
         }}
-        div[data-testid="stFormSubmitButton"] > button {{height:46px; border-radius:13px; font-weight:700; box-shadow:none !important;}}
+        div[data-testid="stFormSubmitButton"] > button {{height:46px; border-radius:13px; font-weight:700; box-shadow:none !important; font-family: var(--font-sans) !important;}}
         div[data-testid="stFormSubmitButton"] > button[kind="primary"] {{background:#173a2d !important; border:1px solid #173a2d !important; color:white !important;}}
-        div[data-testid="stFormSubmitButton"] > button[kind="secondary"] {background:rgba(255,255,255,0.92) !important; border:1px solid rgba(24,37,31,0.10) !important; color:#31443b !important;}
-        div[data-testid="stButton"] > button[kind="primary"], div[data-testid="stFormSubmitButton"] > button[kind="primary"] {background:#173a2d !important; border:1px solid #173a2d !important; color:white !important;}
+        div[data-testid="stFormSubmitButton"] > button[kind="secondary"] {{background:rgba(255,255,255,0.92) !important; border:1px solid rgba(24,37,31,0.10) !important; color:#31443b !important;}}
+        div[data-testid="stButton"] > button[kind="primary"], div[data-testid="stFormSubmitButton"] > button[kind="primary"] {{background:#173a2d !important; border:1px solid #173a2d !important; color:white !important;}}
 
         .search-footnote {{margin-top:10px; text-align:center; color:{'rgba(255,255,255,0.74)' if not result_mode else '#67746c'}; font-size:12px;}}
-        .result-shell-title {font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:#6f7c74; margin-top:8px; margin-bottom:12px; font-family: var(--font-sans) !important;}
-        .card-title {font-size:24px; font-weight:700; color:#16241e; margin-bottom:6px; font-family: var(--font-display) !important; letter-spacing:-0.01em;}
+        .result-shell-title {{font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:#6f7c74; margin-top:8px; margin-bottom:12px; font-family: var(--font-sans) !important;}}
+        .card-title {{font-size:24px; font-weight:700; color:#16241e; margin-bottom:6px; font-family: var(--font-display) !important; letter-spacing:-0.01em;}}
         .card-sub {{font-size:14px; line-height:1.7; color:#536159; margin-bottom:10px;}}
         .result-divider {{height:12px;}}
         .subtle {{color:#4f5d55; font-size:13px; line-height:1.7;}}
@@ -181,14 +181,14 @@ def render_styles(result_mode: bool) -> None:
             box-shadow: 0 14px 42px rgba(16,24,19,0.08) !important;
             padding: 8px 10px !important;
         }}
-        .overview-kicker {{font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:#748178;}}
-        .overview-name {font-size:38px; line-height:1.08; font-weight:700; color:#15231d; margin:8px 0; font-family: var(--font-display) !important; letter-spacing:-0.02em;}
+        .overview-kicker {{font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:#748178; font-family: var(--font-sans) !important;}}
+        .overview-name {{font-size:38px; line-height:1.08; font-weight:700; color:#15231d; margin:8px 0; font-family: var(--font-display) !important; letter-spacing:-0.02em;}}
         .overview-line {{font-size:16px; line-height:1.7; color:#2f4138;}}
         .pill-row {{display:flex; flex-wrap:wrap; gap:10px; margin-top:14px;}}
         .pill {{padding:8px 12px; border-radius:999px; background:#eef3ef; border:1px solid #dde7e1; color:#264335; font-size:13px;}}
         .score-panel {{background:linear-gradient(180deg, #163a2c 0%, #1b583d 100%); color:white; border-radius:24px; padding:26px; box-shadow:0 18px 42px rgba(21,58,43,0.24); min-height:100%;}}
-        .score-kicker {{opacity:.78; letter-spacing:.16em; text-transform:uppercase; font-size:12px;}}
-        .score-number {font-size:88px; line-height:1; font-weight:800; margin:10px 0 6px; font-family: var(--font-sans) !important;}
+        .score-kicker {{opacity:.78; letter-spacing:.16em; text-transform:uppercase; font-size:12px; font-family: var(--font-sans) !important;}}
+        .score-number {{font-size:88px; line-height:1; font-weight:800; margin:10px 0 6px; font-family: var(--font-sans) !important;}}
         .metric-grid {{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-top:16px;}}
         .metric-box {{background:#f5f8f5; border:1px solid #e5ece7; border-radius:18px; padding:14px;}}
         .metric-label {{font-size:12px; color:#728077; margin-bottom:4px;}}
@@ -196,10 +196,10 @@ def render_styles(result_mode: bool) -> None:
         .metric-note {{font-size:12px; color:#5e6c64; margin-top:4px;}}
         .deduct-row {{display:flex; justify-content:space-between; align-items:flex-start; gap:14px; padding:14px 0; border-bottom:1px dashed #e2e9e4;}}
         .deduct-row:last-child {{border-bottom:none;}}
-        .deduct-title {{font-size:16px; font-weight:700; color:#1b2a23;}}
+        .deduct-title {{font-size:16px; font-weight:700; color:#1b2a23; font-family: var(--font-display) !important;}}
         .deduct-detail {{font-size:13px; color:#67756d; margin-top:4px;}}
         .deduct-right {{font-size:16px; font-weight:700; color:#173a2d; white-space:nowrap;}}
-        .plain-band {{background:#f4f6f3; border-radius:24px; padding:18px 18px 22px; margin-top: 14px; box-shadow: inset 0 0 0 1px rgba(21,34,26,0.04);}}
+        .plain-band {{background:#f4f6f3; border-radius:24px; padding:18px 18px 22px; margin-top:14px; box-shadow: inset 0 0 0 1px rgba(21,34,26,0.04);}}
 
         @media (max-width: 900px) {{
             .block-container {{padding-left:.9rem !important; padding-right:.9rem !important;}}
