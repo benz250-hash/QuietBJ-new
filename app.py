@@ -20,9 +20,6 @@ AMAP_REGEO_URL = "https://restapi.amap.com/v3/geocode/regeo"
 TIMEOUT = 12
 
 
-# -----------------------------
-# Data and helpers
-# -----------------------------
 def get_amap_api_key() -> str:
     try:
         key = str(st.secrets.get("AMAP_API_KEY", "")).strip()
@@ -36,8 +33,7 @@ def get_amap_api_key() -> str:
 @st.cache_data(show_spinner=False)
 def load_communities() -> pd.DataFrame:
     df = pd.read_csv(DATA_FILE)
-    df = df.fillna("")
-    return df
+    return df.fillna("")
 
 
 @st.cache_data(show_spinner=False)
@@ -63,9 +59,6 @@ def safe_float(value: Any, default: float | None = None) -> float | None:
         return default
 
 
-# -----------------------------
-# Scoring model
-# -----------------------------
 def road_risk(dist_primary: float | None, dist_expressway: float | None) -> float:
     score = 0.0
     if dist_expressway is None:
@@ -204,12 +197,12 @@ def score_label(score: int) -> str:
     if score >= 90:
         return "非常安静"
     if score >= 80:
-        return "比较安静"
+        return "较为安静"
     if score >= 70:
-        return "安静度一般"
+        return "中等偏静"
     if score >= 60:
-        return "偏吵"
-    return "较吵"
+        return "略受噪音影响"
+    return "噪音偏高"
 
 
 def calculate_score(features: dict[str, Any]) -> dict[str, Any]:
@@ -224,14 +217,12 @@ def calculate_score(features: dict[str, Any]) -> dict[str, Any]:
     complaints = complaint_risk(safe_float(features.get("complaint_noise_count")))
 
     env_risk = round(0.55 * road + 0.12 * rail + 0.08 * flight + 0.13 * local + 0.12 * complaints, 1)
-
     building_acoustic = round(
         0.6 * slab_score(safe_float(features.get("slab_thickness_proxy")))
         + 0.25 * building_age_score(safe_float(features.get("building_year")))
         + 0.15 * quality_score(features.get("quality_proxy")),
         1,
     )
-
     far_penalty = far_to_penalty(safe_float(features.get("far_ratio")))
     score = round(max(50, min(100, 100 - 0.7 * env_risk + 0.15 * building_acoustic - 0.15 * far_penalty)))
 
@@ -249,9 +240,6 @@ def calculate_score(features: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-# -----------------------------
-# Matching and estimation
-# -----------------------------
 def match_community(query: str, df: pd.DataFrame) -> dict[str, Any] | None:
     norm_query = normalize_text(query)
     if not norm_query:
@@ -270,14 +258,7 @@ def match_community(query: str, df: pd.DataFrame) -> dict[str, Any] | None:
         contains = any(norm_query in item or item in norm_query for item in candidate_norms)
         similarity = max([difflib.SequenceMatcher(None, norm_query, item).ratio() for item in candidate_norms] + [0.0])
 
-        score = 0.0
-        if exact:
-            score = 1.0
-        elif contains:
-            score = 0.93
-        else:
-            score = similarity
-
+        score = 1.0 if exact else 0.93 if contains else similarity
         if score > best_score:
             best_score = score
             best_row = row.to_dict()
@@ -330,15 +311,14 @@ def estimate_from_amap(query: str, api_key: str) -> dict[str, Any] | None:
         geo = amap_geocode(query, api_key)
         if not geo:
             return None
-        location = geo.get("location", "")
-        lon_str, lat_str = location.split(",")
+        lon_str, lat_str = geo.get("location", "").split(",")
         lon, lat = float(lon_str), float(lat_str)
         regeo = amap_regeo(lon, lat, api_key) or {}
         roads = regeo.get("roads", []) or []
         pois = regeo.get("pois", []) or []
 
-        dist_primary: float | None = None
-        dist_expressway: float | None = None
+        dist_primary = None
+        dist_expressway = None
         for road in roads:
             distance = safe_float(road.get("distance"))
             if distance is None:
@@ -368,8 +348,7 @@ def estimate_from_amap(query: str, api_key: str) -> dict[str, Any] | None:
 
         district = geo.get("district", "") or regeo.get("addressComponent", {}).get("district", "")
         address_text = regeo.get("formatted_address", query)
-
-        features = {
+        return {
             "community_name": query,
             "district": district,
             "address": address_text,
@@ -388,48 +367,50 @@ def estimate_from_amap(query: str, api_key: str) -> dict[str, Any] | None:
             "complaint_noise_count": 8,
             "source": "amap_estimate",
         }
-        return features
     except Exception:
         return None
 
 
-# -----------------------------
-# UI
-# -----------------------------
 def inject_css() -> None:
     bg_b64 = file_to_base64(str(BG_FILE)) if BG_FILE.exists() else ""
     st.markdown(
         f"""
         <style>
         :root {{
-            --glass: rgba(255,255,255,0.82);
-            --glass-border: rgba(255,255,255,0.22);
-            --ink: #202734;
-            --muted: #5f6775;
-            --green: #8faa7d;
-            --green-dark: #779564;
-            --dark-btn: #11141d;
-            --page-light: #f5f6f8;
+            --glass: rgba(255,255,255,0.72);
+            --glass-strong: rgba(255,255,255,0.84);
+            --glass-border: rgba(255,255,255,0.20);
+            --ink: #142030;
+            --muted: #5e6775;
+            --nav: rgba(255,255,255,0.96);
+            --accent: #95ad83;
+            --accent-dark: #7a9567;
+            --btn-dark: #0e1624;
+            --page-light: #f6f7f8;
+            --shadow: 0 28px 72px rgba(7, 15, 28, 0.18);
         }}
 
         html, body, [class*="css"] {{
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "PingFang SC", "Noto Sans SC", sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
         }}
 
-        .stApp {{
+        .stApp, [data-testid="stAppViewContainer"], [data-testid="stAppViewContainer"] > .main, section.main,
+        [data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"] {{
             background: transparent !important;
         }}
 
-        [data-testid="stAppViewContainer"],
-        [data-testid="stAppViewContainer"] > .main,
-        section.main {{
-            background: transparent !important;
+        .block-container, [data-testid="stVerticalBlock"], [data-testid="stHorizontalBlock"] {{
+            position: relative;
+            z-index: 2;
         }}
 
-        [data-testid="stHeader"],
-        [data-testid="stToolbar"],
-        [data-testid="stDecoration"] {{
-            background: transparent !important;
+        .block-container {{
+            max-width: 100% !important;
+            padding: 0 !important;
+        }}
+
+        section.main > div {{
+            padding-top: 0 !important;
         }}
 
         .bg-wrap {{
@@ -443,7 +424,9 @@ def inject_css() -> None:
         .bg-photo {{
             position: absolute;
             inset: 0;
-            background-image: linear-gradient(rgba(10,14,18,0.18), rgba(10,14,18,0.34)), url("data:image/jpeg;base64,{bg_b64}");
+            background-image:
+                linear-gradient(180deg, rgba(5,10,18,0.24) 0%, rgba(7,12,18,0.38) 44%, rgba(7,12,18,0.18) 62%, rgba(255,255,255,0.02) 72%),
+                url("data:image/jpeg;base64,{bg_b64}");
             background-size: cover;
             background-position: center center;
             background-repeat: no-repeat;
@@ -456,30 +439,22 @@ def inject_css() -> None:
             background: linear-gradient(
                 to bottom,
                 rgba(255,255,255,0.00) 0%,
-                rgba(245,246,248,0.05) 58%,
-                rgba(245,246,248,0.35) 78%,
-                rgba(245,246,248,0.70) 100%
+                rgba(246,247,248,0.00) 54%,
+                rgba(246,247,248,0.10) 68%,
+                rgba(246,247,248,0.34) 82%,
+                rgba(246,247,248,0.54) 100%
             );
         }}
 
-        .block-container,
-        [data-testid="stVerticalBlock"],
-        [data-testid="stHorizontalBlock"] {{
-            position: relative;
-            z-index: 1;
-        }}
-
-        .block-container {{
-            max-width: 100% !important;
-            padding: 0 !important;
-        }}
-
-        section.main > div {{
-            padding-top: 0 !important;
-        }}
-
         .page {{
-            padding: 0 32px 48px 32px;
+            padding: 0 38px 54px 38px;
+        }}
+
+        .nav-wrap {{
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            padding-top: 18px;
         }}
 
         .nav {{
@@ -487,70 +462,76 @@ def inject_css() -> None:
             align-items: center;
             justify-content: space-between;
             gap: 22px;
-            padding: 18px 0 0 0;
-            color: #fff;
-            font-weight: 800;
+            padding: 10px 20px;
+            border-radius: 18px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.10);
+            backdrop-filter: blur(8px);
         }}
 
         .nav-brand {{
-            font-size: clamp(2rem, 5vw, 4.2rem);
+            font-size: clamp(2.6rem, 5vw, 4.5rem);
             line-height: 1;
             letter-spacing: 0.02em;
-            text-shadow: 0 4px 24px rgba(0,0,0,0.35);
+            color: white;
+            font-weight: 900;
+            text-shadow: 0 8px 36px rgba(0,0,0,0.35);
         }}
 
         .nav-links {{
             display: flex;
             align-items: center;
-            gap: 30px;
+            gap: 28px;
+            color: rgba(255,255,255,0.95);
             font-size: 1.1rem;
-            text-shadow: 0 2px 16px rgba(0,0,0,0.25);
+            font-weight: 800;
+            text-shadow: 0 3px 18px rgba(0,0,0,0.25);
         }}
 
         .nav-login {{
-            padding: 14px 22px;
-            background: rgba(128,157,108,0.96);
-            border-radius: 12px;
+            padding: 13px 22px;
+            border-radius: 14px;
+            background: rgba(147,170,125,0.94);
             color: white;
             font-weight: 900;
-            box-shadow: 0 8px 22px rgba(0,0,0,0.18);
+            box-shadow: 0 10px 26px rgba(0,0,0,0.16);
         }}
 
         .hero {{
-            min-height: 74vh;
+            min-height: calc(100vh - 92px);
             display: flex;
-            flex-direction: column;
+            align-items: center;
             justify-content: center;
-            padding-bottom: 90px;
+            padding: 2vh 0 10vh 0;
         }}
 
         .search-card {{
-            width: min(1040px, 92vw);
+            width: min(980px, 90vw);
             margin: 0 auto;
             background: rgba(255,255,255,0.74);
-            border: 1px solid rgba(255,255,255,0.35);
-            backdrop-filter: blur(10px);
-            border-radius: 24px;
-            box-shadow: 0 24px 60px rgba(10,14,22,0.18);
-            padding: 34px 28px 28px 28px;
+            border: 1px solid rgba(255,255,255,0.28);
+            backdrop-filter: blur(16px);
+            border-radius: 28px;
+            box-shadow: var(--shadow);
+            padding: 34px 30px 28px 30px;
         }}
 
         .search-title {{
             text-align: center;
-            color: #444b58;
-            font-size: clamp(2.3rem, 5vw, 4.4rem);
-            line-height: 1;
+            color: #2f3847;
+            font-size: clamp(2.5rem, 5vw, 4.5rem);
+            line-height: 1.05;
             font-weight: 900;
-            margin-bottom: 14px;
-            letter-spacing: 0.01em;
+            letter-spacing: 0.02em;
+            margin-bottom: 10px;
         }}
 
         .search-copy {{
             text-align: center;
-            color: #5f6675;
-            font-size: 1rem;
-            line-height: 1.65;
-            margin-bottom: 18px;
+            color: #5b6674;
+            font-size: 1.02rem;
+            line-height: 1.7;
+            margin-bottom: 22px;
         }}
 
         .search-shell form {{
@@ -565,30 +546,32 @@ def inject_css() -> None:
 
         .search-shell [data-testid="stTextInput"] input {{
             min-height: 72px !important;
-            border-radius: 10px !important;
-            border: 2px solid rgba(33,38,48,0.16) !important;
-            background: rgba(255,255,255,0.98) !important;
-            color: #283142 !important;
-            font-size: 1.7rem !important;
-            padding-left: 20px !important;
+            border-radius: 12px !important;
+            border: 1.5px solid rgba(27,39,55,0.12) !important;
+            background: rgba(255,255,255,0.96) !important;
+            color: #223041 !important;
+            font-size: 1.38rem !important;
+            padding-left: 22px !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
         }}
 
         .search-shell [data-testid="stFormSubmitButton"] button {{
             min-height: 72px !important;
-            border-radius: 10px !important;
-            font-size: 1.55rem !important;
+            border-radius: 12px !important;
+            font-size: 1.28rem !important;
             font-weight: 900 !important;
             border: none !important;
             width: 100% !important;
+            box-shadow: 0 12px 26px rgba(8,14,22,0.10);
         }}
 
         .search-shell [data-testid="stFormSubmitButton"] button[kind="primary"] {{
-            background: #9ab48d !important;
+            background: linear-gradient(180deg, #a2ba90 0%, #8ea97a 100%) !important;
             color: white !important;
         }}
 
         .search-shell [data-testid="stFormSubmitButton"] button[kind="secondary"] {{
-            background: var(--dark-btn) !important;
+            background: linear-gradient(180deg, #172131 0%, #0d1421 100%) !important;
             color: white !important;
         }}
 
@@ -599,55 +582,56 @@ def inject_css() -> None:
         }}
 
         .intro-strip {{
-            margin-top: -10px;
-            margin-bottom: 22px;
-            padding: 16px 18px;
-            border-radius: 16px;
-            color: #55606f;
-            background: rgba(255,255,255,0.72);
+            margin-top: 4px;
+            margin-bottom: 24px;
+            padding: 17px 20px;
+            border-radius: 18px;
+            color: #526070;
+            background: rgba(255,255,255,0.74);
             border: 1px solid rgba(255,255,255,0.26);
             backdrop-filter: blur(10px);
+            box-shadow: 0 10px 26px rgba(9,14,24,0.06);
         }}
 
         .card {{
-            background: rgba(255,255,255,0.94);
-            border-radius: 24px;
-            border: 1px solid rgba(15,18,28,0.06);
-            box-shadow: 0 18px 48px rgba(10,14,22,0.10);
-            padding: 28px;
+            background: rgba(255,255,255,0.92);
+            border-radius: 28px;
+            border: 1px solid rgba(16,24,40,0.05);
+            box-shadow: 0 20px 50px rgba(9,14,24,0.10);
+            padding: 30px;
         }}
 
         .badge {{
             display: inline-block;
             padding: 8px 14px;
             border-radius: 999px;
-            background: rgba(137,167,122,0.12);
-            color: #5d7552;
-            border: 1px solid rgba(137,167,122,0.24);
+            background: rgba(144,167,123,0.12);
+            color: #536c46;
+            border: 1px solid rgba(144,167,123,0.22);
             font-size: 0.94rem;
             font-weight: 800;
             margin-bottom: 12px;
         }}
 
         .score-ring {{
-            width: 220px;
-            height: 220px;
+            width: 228px;
+            height: 228px;
             border-radius: 999px;
             margin: 0 auto;
             display: flex;
             align-items: center;
             justify-content: center;
-            border: 12px solid rgba(137,167,122,0.28);
-            background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.99), rgba(243,247,240,1));
-            font-size: 3.6rem;
-            color: #273244;
+            border: 12px solid rgba(144,167,123,0.26);
+            background: radial-gradient(circle at 28% 28%, rgba(255,255,255,0.99), rgba(243,246,241,1));
+            font-size: 3.7rem;
+            color: #243040;
             font-weight: 900;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 12px 30px rgba(10,14,22,0.10);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 16px 34px rgba(8,14,22,0.10);
         }}
 
         .score-label {{
             text-align: center;
-            margin-top: 12px;
+            margin-top: 14px;
             color: #5f6979;
             font-size: 1.04rem;
             font-weight: 800;
@@ -655,7 +639,7 @@ def inject_css() -> None:
 
         .h2 {{
             color: var(--ink);
-            font-size: 1.75rem;
+            font-size: 1.8rem;
             font-weight: 900;
             margin: 0 0 8px 0;
         }}
@@ -663,23 +647,24 @@ def inject_css() -> None:
         .muted {{
             color: var(--muted);
             font-size: 1rem;
-            line-height: 1.7;
+            line-height: 1.72;
         }}
 
         .reason {{
-            background: #f7f8fa;
+            background: linear-gradient(180deg, #fafbfc 0%, #f7f8fa 100%);
             border-radius: 18px;
             border: 1px solid rgba(19,23,32,0.06);
             padding: 16px;
-            min-height: 108px;
-            color: #344054;
+            min-height: 114px;
+            color: #334155;
             font-weight: 700;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
         }}
 
         .small-note {{
-            color: #6a7382;
+            color: #687384;
             text-align: center;
-            margin: 26px 0 12px 0;
+            margin: 28px 0 12px 0;
         }}
 
         .divider {{
@@ -690,12 +675,15 @@ def inject_css() -> None:
 
         @media (max-width: 980px) {{
             .page {{ padding: 0 16px 34px 16px; }}
+            .nav {{ padding: 8px 12px; }}
             .nav-links {{ display: none; }}
-            .hero {{ min-height: 68vh; padding-bottom: 60px; }}
-            .search-card {{ width: 94vw; padding: 22px 14px 18px 14px; border-radius: 18px; }}
-            .search-shell [data-testid="stTextInput"] input {{ min-height: 56px !important; font-size: 1.15rem !important; }}
-            .search-shell [data-testid="stFormSubmitButton"] button {{ min-height: 56px !important; font-size: 1.08rem !important; }}
-            .score-ring {{ width: 184px; height: 184px; font-size: 3rem; }}
+            .hero {{ min-height: calc(100vh - 66px); padding: 0 0 6vh 0; }}
+            .search-card {{ width: 94vw; padding: 24px 14px 20px 14px; border-radius: 20px; }}
+            .search-title {{ font-size: 2.15rem; }}
+            .search-copy {{ font-size: 0.95rem; margin-bottom: 16px; }}
+            .search-shell [data-testid="stTextInput"] input {{ min-height: 58px !important; font-size: 1.02rem !important; }}
+            .search-shell [data-testid="stFormSubmitButton"] button {{ min-height: 58px !important; font-size: 1rem !important; }}
+            .score-ring {{ width: 190px; height: 190px; font-size: 3rem; }}
         }}
         </style>
         <div class="bg-wrap"><div class="bg-photo"></div><div class="bg-fade"></div></div>
@@ -707,16 +695,16 @@ def inject_css() -> None:
 def render_nav() -> None:
     st.markdown(
         """
-        <div class="page">
+        <div class="page nav-wrap">
           <div class="nav">
             <div class="nav-brand">QUIETBJ</div>
             <div class="nav-links">
-              <span>How it works</span>
-              <span>FAQs</span>
-              <span>Contact</span>
-              <span>Blog</span>
-              <span>Developers</span>
-              <span class="nav-login">Log In</span>
+              <span>工作原理</span>
+              <span>常见问题</span>
+              <span>联系咨询</span>
+              <span>观点文章</span>
+              <span>数据接口</span>
+              <span class="nav-login">登录</span>
             </div>
           </div>
         </div>
@@ -730,8 +718,8 @@ def render_hero(df: pd.DataFrame) -> tuple[dict[str, Any] | None, str | None]:
     st.markdown(
         """
         <div class="search-card">
-          <div class="search-title">SEARCH QUIETSCORE™</div>
-          <div class="search-copy">输入北京小区名或地址。优先命中本地样本库；没命中时，若已配置高德 Key，则自动做在线估算。</div>
+          <div class="search-title">搜索静噪分™</div>
+          <div class="search-copy">输入北京小区名称或街道地址。系统优先匹配本地样本库；未命中时，若已配置高德 Key，将自动进行在线估算。</div>
         """,
         unsafe_allow_html=True,
     )
@@ -743,18 +731,18 @@ def render_hero(df: pd.DataFrame) -> tuple[dict[str, Any] | None, str | None]:
 
     st.markdown('<div class="search-shell">', unsafe_allow_html=True)
     with st.form("hero_search", clear_on_submit=False):
-        c1, c2, c3 = st.columns([7.2, 1.1, 1.4])
+        c1, c2, c3 = st.columns([7.0, 1.25, 1.45])
         with c1:
             query = st.text_input(
                 "搜索北京小区或地址",
                 value=st.session_state.query,
-                placeholder="Enter address / 输入北京小区名、街道地址",
+                placeholder="请输入北京小区名、楼盘名或街道地址",
                 label_visibility="collapsed",
             )
         with c2:
-            go_clicked = st.form_submit_button("Go", type="primary", use_container_width=True)
+            go_clicked = st.form_submit_button("开始查询", type="primary", use_container_width=True)
         with c3:
-            reset_clicked = st.form_submit_button("Reset", use_container_width=True)
+            reset_clicked = st.form_submit_button("重新输入", use_container_width=True)
 
     st.markdown('</div></div></div></div>', unsafe_allow_html=True)
 
@@ -784,27 +772,27 @@ def render_hero(df: pd.DataFrame) -> tuple[dict[str, Any] | None, str | None]:
 
 def render_result(result: dict[str, Any]) -> None:
     score_info = calculate_score(result)
-    reasons: list[str] = []
+    reasons = []
     if score_info["road"] <= 25:
-        reasons.append("远离环路、快速路与主干线")
+        reasons.append("远离环路、快速路与主干线，对外部车流噪音更有利。")
     elif score_info["road"] >= 60:
-        reasons.append("靠近环路/高速/主干线，外部车流噪音较重")
+        reasons.append("靠近环路、高速或主干线，外部交通噪音对评分形成明显拖累。")
 
     if score_info["far_penalty"] <= 25:
-        reasons.append("容积率偏低，内部人车活动噪音更可控")
+        reasons.append("容积率偏低，内部人车活动更克制，整体居住安静度更占优。")
     elif score_info["far_penalty"] >= 70:
-        reasons.append("容积率偏高，楼间距与密度拖分")
+        reasons.append("容积率偏高，楼间距与密度压力较大，内部环境安静度被拉低。")
 
     if score_info["building_acoustic"] >= 75:
-        reasons.append("楼体隔声能力中上")
+        reasons.append("楼体隔声代理值处于中上水平，对日常居住体感形成支撑。")
     elif score_info["building_acoustic"] <= 55:
-        reasons.append("楼体隔声能力一般")
+        reasons.append("楼体隔声代理值一般，建议后续结合楼栋、朝向与楼层继续细化判断。")
 
     if score_info["complaints"] >= 60:
-        reasons.append("周边噪音投诉热度偏高")
+        reasons.append("周边噪音投诉热度偏高，说明体感扰动可能不止来自道路。")
 
     while len(reasons) < 3:
-        reasons.append("当前为模型估算值，后续可继续扩展到楼栋级修正")
+        reasons.append("当前结果仍属于模型估算值，后续可继续升级到楼栋级与朝向级修正。")
 
     source_label = "本地样本库" if result.get("source") == "sample" else "在线估算"
     title = result.get("community_name") or "北京地址结果"
@@ -813,7 +801,7 @@ def render_result(result: dict[str, Any]) -> None:
 
     st.markdown('<div class="content">', unsafe_allow_html=True)
     st.markdown(
-        f'<div class="intro-strip">查询来源：<b>{source_label}</b>。当前主模型更重视北京环路、高速、快速路干线影响；这仍是地址级/小区级估算，不是官方实测分贝。</div>',
+        f'<div class="intro-strip">查询来源：<b>{source_label}</b>。当前模型优先强调北京环路、高速与快速路干线影响，并结合容积率与楼体隔声代理值，给出 50–100 分的住宅安静度估算。</div>',
         unsafe_allow_html=True,
     )
 
@@ -836,7 +824,7 @@ def render_result(result: dict[str, Any]) -> None:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown('<div class="h2">为什么是这个分数</div>', unsafe_allow_html=True)
         st.markdown(
-            '<div class="muted">这是一个 50–100 分的北京住宅安静度估算，优先考虑环路/快速路/高速，再叠加容积率与楼体隔声代理值。</div>',
+            '<div class="muted">这是一个面向北京住宅场景的静噪评分模型。它不会替代实地看房，但能先替你筛掉一部分高噪音风险地址。</div>',
             unsafe_allow_html=True,
         )
         r1, r2, r3 = st.columns(3, gap="small")
@@ -852,7 +840,7 @@ def render_result(result: dict[str, Any]) -> None:
         st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown(
-        '<div class="small-note">想继续做准，可以下一步升级到楼栋级：输入小区后再选楼栋号、朝向和是否临主路。</div>',
+        '<div class="small-note">下一步若要继续提升准确度，可以增加楼栋位置、朝向、楼层与是否临主路等信息。</div>',
         unsafe_allow_html=True,
     )
     st.markdown('</div>', unsafe_allow_html=True)
@@ -860,13 +848,13 @@ def render_result(result: dict[str, Any]) -> None:
 
 def render_status(status: str | None) -> None:
     if status == "empty":
-        st.info("先输入北京小区名或地址，再点 Go。")
+        st.info("请先输入北京小区名或地址，再点击“开始查询”。")
     elif status == "not_found":
         api_key = get_amap_api_key()
         if api_key:
-            st.warning("高德在线估算也没有返回有效地址。可以换成更完整的地址，或者先搜样本库里的小区，例如：新龙城、望京西园四区、天通苑东一区。")
+            st.warning("当前地址未能从样本库或高德在线估算中返回有效结果。建议换成更完整的地址，或先尝试：新龙城、望京西园四区、天通苑东一区。")
         else:
-            st.warning("本地样本库没命中，而且当前还没有配置高德 Key，所以暂时无法在线估算。先在 Streamlit Cloud 的 Secrets 里填 `AMAP_API_KEY`。")
+            st.warning("本地样本库没有命中，而且当前未配置高德 Key，暂时无法在线估算。先在 Streamlit Cloud 的 Secrets 里填写 `AMAP_API_KEY`。")
 
 
 def main() -> None:
