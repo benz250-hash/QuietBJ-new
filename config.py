@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import os
 from pathlib import Path
 
@@ -9,7 +8,7 @@ COMMUNITY_ZONES_FILE = BASE_DIR / "community_zones.csv"
 BACKGROUND_FILE = BASE_DIR / "background.jpg"
 TIMEOUT_SECONDS = 10
 AMAP_CITY = "北京"
-DEFAULT_ZONE_CODE = "central_inner"
+DEFAULT_BASE_SCORE = 75
 
 
 def get_amap_api_key(streamlit_secrets=None) -> str:
