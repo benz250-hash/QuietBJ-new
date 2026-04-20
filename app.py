@@ -699,12 +699,12 @@ def render_nav() -> None:
           <div class="nav">
             <div class="nav-brand">QUIETBJ</div>
             <div class="nav-links">
-              <span>工作原理</span>
-              <span>常见问题</span>
-              <span>联系咨询</span>
-              <span>观点文章</span>
-              <span>数据接口</span>
-              <span class="nav-login">登录</span>
+              <a href="#how-it-works">工作原理</a>
+              <a href="#faqs">常见问题</a>
+              <a href="#insights">观点文章</a>
+              <a href="#contact">联系咨询</a>
+              <a href="#api">数据接口</a>
+              <a href="#contact" class="nav-login">登录</a>
             </div>
           </div>
         </div>
@@ -857,6 +857,106 @@ def render_status(status: str | None) -> None:
             st.warning("本地样本库没有命中，而且当前未配置高德 Key，暂时无法在线估算。先在 Streamlit Cloud 的 Secrets 里填写 `AMAP_API_KEY`。")
 
 
+
+def render_knowledge_sections() -> None:
+    st.markdown('<div class="knowledge-wrap">', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div id="how-it-works" class="anchor"></div>
+        <div class="section-card">
+          <div class="section-title">工作原理介绍</div>
+          <div class="section-subtitle">QuietBJ 不是实测分贝仪，而是一个面向北京住宅场景的地址级静噪筛选工具。它优先看环路、高速、快速路与主干线影响，再结合容积率、楼体隔声代理值与投诉热度，对住宅安静度做一个 50–100 分的前置判断。</div>
+          <div class="article-grid">
+            <div class="article-item">
+              <h3>第一步：看外部道路风险</h3>
+              <p>北京住宅最先拉开差距的，往往不是内部园林，而是离环路、高架、快速路和主干道有多近。模型会把这部分作为最大权重。</p>
+            </div>
+            <div class="article-item">
+              <h3>第二步：看社区密度与楼体</h3>
+              <p>同样是地段不错的小区，容积率更高、楼间距更紧、楼体隔声更弱的项目，长期体感往往更吵。QuietBJ 会把这些结构性因素纳入修正。</p>
+            </div>
+            <div class="article-item">
+              <h3>第三步：做地址级估算</h3>
+              <p>如果本地样本库命中，就直接给出分数；没有命中时，会调用高德做在线估算。最终结果适合做第一轮筛选，不替代实地看房。</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="faqs" class="anchor"></div>
+        <div class="section-card">
+          <div class="section-title">常见问题解释</div>
+          <div class="section-subtitle">这部分回答用户在看房、租房和选址时最常问的几个问题。</div>
+          <div class="article-grid">
+            <div class="article-item">
+              <h3>为什么分数不是实测分贝？</h3>
+              <p>因为绝大多数地址没有连续可得的楼栋级实时噪声传感器。QuietBJ 采用的是模型估算，更适合批量初筛。</p>
+            </div>
+            <div class="article-item">
+              <h3>为什么同一小区不同楼栋会不一样？</h3>
+              <p>同一小区里，临主路、靠大门、靠商业、被前排楼遮挡与否，都会显著改变噪声体感。这也是 QuietBJ 下一步要升级到楼栋级的重要原因。</p>
+            </div>
+            <div class="article-item">
+              <h3>分数能直接代替实地看房吗？</h3>
+              <p>不能。它更像一个高效的前置过滤器：先排掉明显高风险地址，再把精力留给更值得看的房源。</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="insights" class="anchor"></div>
+        <div class="section-card">
+          <div class="section-title">住宅噪音的观点文章</div>
+          <div class="section-subtitle">下面这些观点不是法律意见，而是更贴近真实居住体验的判断框架。</div>
+          <div class="article-grid">
+            <div class="article-item">
+              <h3>观点一：地段不是一切，安静本身也是稀缺资产</h3>
+              <p>在大城市里，很多房源的溢价不是来自装修，而是来自可持续的安静感。真正好的住宅，通常能在通勤、配套和安静度之间找到平衡。</p>
+            </div>
+            <div class="article-item">
+              <h3>观点二：地图上看着不远，体感可能完全不同</h3>
+              <p>离快速路 150 米和离快速路 350 米，看起来只是两百米差距，但在夜间、雨天、低楼层和无遮挡场景下，体感差异常常非常大。</p>
+            </div>
+            <div class="article-item">
+              <h3>观点三：噪音判断要尽量前置</h3>
+              <p>一套房子的户型、装修、楼龄都可以改善，但如果外部交通噪音先天太强，后续改造空间有限。先看噪音，再谈细节，效率往往更高。</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="contact" class="anchor"></div>
+        <div class="section-card">
+          <div class="section-title">联系咨询</div>
+          <div class="section-subtitle">如果你准备把 QuietBJ 扩展成楼栋级、楼层级或选房决策工具，可以继续补充数据源与产品说明。</div>
+          <div class="contact-strip">
+            <div class="contact-chip">可继续扩展：楼栋位置 / 朝向 / 楼层 / 楼间遮挡 / 实地反馈</div>
+            <div class="contact-chip">商务方向：住宅筛选、租赁选址、地产信息服务</div>
+          </div>
+        </div>
+
+        <div id="api" class="anchor"></div>
+        <div class="section-card">
+          <div class="section-title">数据接口</div>
+          <div class="section-subtitle">当前版本仍以本地样本库和高德在线估算为主。未来如要做稳定 API，建议分成小区库、楼栋库、道路特征库和用户反馈库四层。</div>
+          <div class="article-grid">
+            <div class="article-item">
+              <h3>输入层</h3>
+              <p>地址、小区名、楼栋号、朝向、楼层。</p>
+            </div>
+            <div class="article-item">
+              <h3>特征层</h3>
+              <p>道路距离、轨道影响、容积率、楼体隔声代理值、投诉热度。</p>
+            </div>
+            <div class="article-item">
+              <h3>输出层</h3>
+              <p>静噪分、分数解释、风险标签、后续看房建议。</p>
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
 def main() -> None:
     inject_css()
     render_nav()
@@ -866,6 +966,7 @@ def main() -> None:
         render_result(result)
     else:
         render_status(status)
+    render_knowledge_sections()
 
 
 if __name__ == "__main__":
