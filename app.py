@@ -168,7 +168,6 @@ def render_styles(result_mode: bool) -> None:
         div[data-testid="stButton"] > button[kind="primary"], div[data-testid="stFormSubmitButton"] > button[kind="primary"] {{background:#173a2d !important; border:1px solid #173a2d !important; color:white !important;}}
 
         .search-footnote {{margin-top:10px; text-align:center; color:{'rgba(255,255,255,0.74)' if not result_mode else '#67746c'}; font-size:12px;}}
-        .result-shell-title {{font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:#6f7c74; margin-top:8px; margin-bottom:12px; font-family: var(--font-sans) !important;}}
         .card-title {{font-size:24px; font-weight:700; color:#16241e; margin-bottom:6px; font-family: var(--font-display) !important; letter-spacing:-0.01em;}}
         .card-sub {{font-size:14px; line-height:1.7; color:#536159; margin-bottom:10px;}}
         .result-divider {{height:12px;}}
@@ -181,7 +180,6 @@ def render_styles(result_mode: bool) -> None:
             box-shadow: 0 14px 42px rgba(16,24,19,0.08) !important;
             padding: 8px 10px !important;
         }}
-        .overview-kicker {{font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:#748178; font-family: var(--font-sans) !important;}}
         .overview-name {{font-size:38px; line-height:1.08; font-weight:700; color:#15231d; margin:8px 0; font-family: var(--font-display) !important; letter-spacing:-0.02em;}}
         .overview-line {{font-size:16px; line-height:1.7; color:#2f4138;}}
         .pill-row {{display:flex; flex-wrap:wrap; gap:10px; margin-top:14px;}}
@@ -199,7 +197,6 @@ def render_styles(result_mode: bool) -> None:
         .deduct-title {{font-size:16px; font-weight:700; color:#1b2a23; font-family: var(--font-display) !important;}}
         .deduct-detail {{font-size:13px; color:#67756d; margin-top:4px;}}
         .deduct-right {{font-size:16px; font-weight:700; color:#173a2d; white-space:nowrap;}}
-        .plain-band {{background:#f4f6f3; border-radius:24px; padding:18px 18px 22px; margin-top:14px; box-shadow: inset 0 0 0 1px rgba(21,34,26,0.04);}}
 
         @media (max-width: 900px) {{
             .block-container {{padding-left:.9rem !important; padding-right:.9rem !important;}}
@@ -312,7 +309,6 @@ def render_overview_card(query: str, community_row: dict[str, Any], result: dict
     with st.container(border=True):
         left, right = st.columns([1.25, 0.95], vertical_alignment="top")
         with left:
-            st.markdown('<div class="overview-kicker">Result Overview</div>', unsafe_allow_html=True)
             st.markdown(f'<div class="overview-name">{community_row.get("community_name", "目标小区")}</div>', unsafe_allow_html=True)
             st.markdown(f'<div class="overview-line">{build_summary_line(signals)}</div>', unsafe_allow_html=True)
             pills = [f'<span class="pill">标准基准分 {DEFAULT_BASE_SCORE}</span>']
@@ -375,20 +371,14 @@ def render_position_card(result: dict[str, Any], zone_labels: list[str], zone_ke
         st.markdown('<div class="card-title">楼栋位置调整</div>', unsafe_allow_html=True)
         st.markdown('<div class="card-sub">该部分用于模拟不同楼栋位置语境下的环境差异，例如临街、中央区或内排安静区。</div>', unsafe_allow_html=True)
         st.selectbox("楼栋位置", zone_labels, key=zone_key, label_visibility="collapsed")
-        c1, c2, c3, c4 = st.columns(4)
-        items = [
-            (c1, "标准基准", DEFAULT_BASE_SCORE, "统一起点评估"),
-            (c2, "楼栋位置", f"{result['zone_adjust']:+d}", result['zone_name']),
-            (c3, "建筑加分", f"{result['build_bonus']:+d}", "楼龄代理值"),
-            (c4, "密度调整", f"-{result['density_penalty']}", "容积率代理值"),
-        ]
-        for col, title, value, note in items:
-            with col:
-                st.markdown(
-                    f'<div class="metric-box"><div class="metric-label">{title}</div><div class="metric-value">{value}</div><div class="metric-note">{note}</div></div>',
-                    unsafe_allow_html=True,
-                )
-        st.markdown(f"<div class='subtle' style='margin-top:12px;'>位置说明：{result['zone_description']}。</div>", unsafe_allow_html=True)
+        summary = (
+            f"当前按“{result['zone_name']}”处理；"
+            f"楼栋位置调整 {result['zone_adjust']:+d}，"
+            f"建筑条件调整 {result['build_bonus']:+d}，"
+            f"密度调整 -{result['density_penalty']}。"
+        )
+        st.markdown(f"<div class='subtle' style='margin-top:12px;'>{summary}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='subtle' style='margin-top:6px;'>位置说明：{result['zone_description']}。</div>", unsafe_allow_html=True)
 
 
 def render_debug_card(geocode_used: dict[str, Any] | None, building_location_text: str, community_row: dict[str, Any], tip_list: list[dict[str, Any]], regeo: dict[str, Any] | None) -> None:
@@ -427,7 +417,8 @@ def main() -> None:
 
     if result_mode:
         render_topbar(light=True)
-        query, submitted, clear = render_search(compact=True)
+        submitted = False
+        clear = False
     else:
         render_topbar(light=False)
         render_hero()
@@ -486,9 +477,6 @@ def main() -> None:
 
     result = compute_position_result(zone_options, community_row, score_engine, int(noise_summary.get("total_penalty", 0)), selected_name)
 
-    if result_mode:
-        st.markdown('<div class="plain-band">', unsafe_allow_html=True)
-    st.markdown('<div class="result-shell-title">Residential Assessment</div>', unsafe_allow_html=True)
     render_overview_card(query, community_row, result, noise_summary.get("signals", []))
     st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
     render_penalty_card(noise_summary)
@@ -496,8 +484,6 @@ def main() -> None:
     render_position_card(result, zone_labels, zone_key)
     st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
     render_debug_card(geocode_used, building_location_text, community_row, tip_list, regeo)
-    if result_mode:
-        st.markdown('</div>', unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
