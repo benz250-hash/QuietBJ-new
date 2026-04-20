@@ -11,7 +11,9 @@ from building_engine import BuildingEngine
 from community_engine import CommunityEngine
 from community_repository import CommunityMatch, CommunityRepository
 from config import AMAP_CITY, BACKGROUND_FILE, COMMUNITIES_FILE, COMMUNITY_ZONES_FILE, DEFAULT_ZONE_CODE, get_amap_api_key
+from noise_point_engine import NoisePointEngine
 from score_pipeline import ScorePipeline
+from text_match import strip_unit_details
 from zone_engine import ZoneEngine
 from zone_repository import ZoneRepository
 
@@ -29,58 +31,30 @@ def render_styles() -> None:
         f"""
         <style>
         .stApp {{background: #eef2f0;}}
-        .bg-layer {{
-            position: fixed; inset: 0;
-            background-image: linear-gradient(to bottom, rgba(9,18,14,0.38), rgba(9,18,14,0.50)), url("data:image/jpeg;base64,{bg_base64}");
-            background-size: cover; background-position: center;
-            z-index: -20;
-        }}
-        .topbar {{
-            display:flex; justify-content:space-between; align-items:center;
-            padding: 10px 0 0 0; color: #fff; font-size: 14px;
-        }}
-        .brand {{font-size: 24px; font-weight: 700; letter-spacing: 0.04em;}}
-        .nav {{display:flex; gap: 22px; opacity: 0.96;}}
-        .hero-wrap {{
-            min-height: 58vh; display:flex; align-items:flex-start; justify-content:center;
-            padding-top: 6vh;
-        }}
-        .hero-box {{
-            width: min(980px, 95%); text-align:center; color:#fff;
-            margin: 0 auto;
-        }}
-        .hero-kicker {{
-            font-size: 14px; letter-spacing: 0.22em; text-transform: uppercase;
-            opacity: 0.92; margin-bottom: 8px;
-        }}
-        .hero-title {{font-size: clamp(38px, 6vw, 76px); font-weight: 800; line-height: 1.04; margin: 0;}}
-        .hero-subtitle {{font-size: 18px; line-height: 1.7; max-width: 760px; margin: 16px auto 22px; opacity: 0.95;}}
-        .glass-card {{
-            background: rgba(255,255,255,0.86); backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.40); border-radius: 24px;
-            box-shadow: 0 24px 70px rgba(0,0,0,0.16);
-            padding: 18px 18px 10px;
-        }}
-        .section-card {{
-            background: rgba(255,255,255,0.92); border: 1px solid rgba(20,36,28,0.08);
-            border-radius: 22px; padding: 26px 24px; box-shadow: 0 12px 40px rgba(26,39,31,0.08);
-        }}
-        .score-shell {{
-            background: linear-gradient(180deg, rgba(19,60,42,0.96), rgba(23,81,58,0.96));
-            color: #fff; border-radius: 22px; padding: 28px; box-shadow: 0 18px 45px rgba(14,44,31,0.25);
-        }}
-        .score-kicker {{opacity: 0.78; letter-spacing: 0.12em; text-transform: uppercase; font-size: 12px;}}
-        .score-number {{font-size: 84px; line-height: 1; font-weight: 800; margin: 10px 0 6px;}}
-        .muted {{color: #647067; font-size: 14px;}}
-        .chip-row {{display:flex; flex-wrap:wrap; gap:10px; margin-top: 14px;}}
-        .chip {{padding: 8px 12px; border-radius: 999px; background:#eef4f0; color:#234632; font-size:13px; border:1px solid #d8e4dc;}}
-        .tiny-note {{font-size: 13px; color: #778178;}}
-        div[data-testid="stTextInputRootElement"] input {{border-radius: 14px !important; height: 54px !important; font-size: 17px !important;}}
-        div[data-testid="stSelectbox"] > div {{border-radius: 14px !important;}}
-        div.stButton > button {{height: 52px; border-radius: 14px; font-weight: 700;}}
+        .bg-layer {{position: fixed; inset: 0; background-image: linear-gradient(to bottom, rgba(9,18,14,0.38), rgba(9,18,14,0.50)), url("data:image/jpeg;base64,{bg_base64}"); background-size: cover; background-position: center; z-index: -20;}}
+        .topbar {{display:flex; justify-content:space-between; align-items:center; padding: 10px 0 0 0; color:#fff; font-size:14px;}}
+        .brand {{font-size:24px; font-weight:700; letter-spacing:0.04em;}}
+        .nav {{display:flex; gap:22px; opacity:0.96;}}
+        .hero-wrap {{min-height:58vh; display:flex; align-items:flex-start; justify-content:center; padding-top:6vh;}}
+        .hero-box {{width:min(980px,95%); text-align:center; color:#fff; margin:0 auto;}}
+        .hero-kicker {{font-size:14px; letter-spacing:0.22em; text-transform:uppercase; opacity:0.92; margin-bottom:8px;}}
+        .hero-title {{font-size: clamp(38px, 6vw, 76px); font-weight: 800; line-height:1.04; margin:0;}}
+        .hero-subtitle {{font-size:18px; line-height:1.7; max-width:760px; margin:16px auto 22px; opacity:0.95;}}
+        .glass-card {{background: rgba(255,255,255,0.86); backdrop-filter: blur(10px); border:1px solid rgba(255,255,255,0.40); border-radius:24px; box-shadow:0 24px 70px rgba(0,0,0,0.16); padding:18px 18px 10px;}}
+        .section-card {{background: rgba(255,255,255,0.92); border:1px solid rgba(20,36,28,0.08); border-radius:22px; padding:26px 24px; box-shadow:0 12px 40px rgba(26,39,31,0.08);}}
+        .score-shell {{background: linear-gradient(180deg, rgba(19,60,42,0.96), rgba(23,81,58,0.96)); color:#fff; border-radius:22px; padding:28px; box-shadow:0 18px 45px rgba(14,44,31,0.25);}}
+        .score-kicker {{opacity:0.78; letter-spacing:0.12em; text-transform:uppercase; font-size:12px;}}
+        .score-number {{font-size:84px; line-height:1; font-weight:800; margin:10px 0 6px;}}
+        .chip-row {{display:flex; flex-wrap:wrap; gap:10px; margin-top:14px;}}
+        .chip {{padding:8px 12px; border-radius:999px; background:#eef4f0; color:#234632; font-size:13px; border:1px solid #d8e4dc;}}
+        .signal-row {{display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px dashed #dfe7e2;}}
+        .tiny-note {{font-size:13px; color:#778178;}}
+        div[data-testid="stTextInputRootElement"] input {{border-radius:14px !important; height:54px !important; font-size:17px !important;}}
+        div[data-testid="stSelectbox"] > div {{border-radius:14px !important;}}
+        div.stButton > button {{height:52px; border-radius:14px; font-weight:700;}}
         div.stButton > button[kind="primary"] {{background:#153f2e; border:1px solid #153f2e;}}
-        .anchor {{position: relative; top: -90px; visibility: hidden;}}
-        .footer-space {{height: 48px;}}
+        .anchor {{position: relative; top:-90px; visibility:hidden;}}
+        .footer-space {{height:48px;}}
         </style>
         <div class="bg-layer"></div>
         """,
@@ -111,7 +85,7 @@ def render_hero() -> tuple[str, bool]:
             <div class="hero-box">
                 <div class="hero-kicker">BEIJING RESIDENTIAL NOISE MODEL</div>
                 <h1 class="hero-title">搜索静噪分™</h1>
-                <div class="hero-subtitle">先识别小区，再按小区基础分与楼栋位置修正出分。高德负责把地址标准化，我们自己的引擎负责判断“临街、内排、出入口、商业边”。</div>
+                <div class="hero-subtitle">先识别小区，再按小区基础分与楼栋位置修正出分；同时实验性抓取学校、医院、商业、主干路等周边噪音点，辅助形成距离权重。</div>
             </div>
         </div>
         """,
@@ -122,28 +96,30 @@ def render_hero() -> tuple[str, bool]:
     with c2:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         with st.form("search_form", clear_on_submit=False):
-            query = st.text_input("请输入北京小区或详细地址", placeholder="例如：新龙城 / 回龙观新龙城 / 望京西园四区 5号楼")
+            query = st.text_input("请输入北京小区或详细地址", placeholder="例如：新龙城 / 回龙观新龙城 / 花家地西里2号楼")
             cc1, cc2, cc3 = st.columns([1.2, 1.2, 3.6])
             with cc1:
                 submit = st.form_submit_button("开始查询", type="primary", use_container_width=True)
             with cc2:
                 reset = st.form_submit_button("清空", use_container_width=True)
             with cc3:
-                st.caption("建议输入：小区名 + 区域 / 楼号。先命中本地小区库，未命中再走高德标准化。")
+                st.caption("建议输入：小区名 + 区域 / 楼号。程序会先去掉楼号再匹配小区；高德只做标准化和周边点抓取。")
         st.markdown('</div>', unsafe_allow_html=True)
     return ("" if reset else query), submit
 
 
-def load_services() -> tuple[CommunityRepository, ZoneRepository, ScorePipeline, AMapProvider]:
+def load_services() -> tuple[CommunityRepository, ZoneRepository, ScorePipeline, AMapProvider, NoisePointEngine]:
     community_repo = CommunityRepository(str(COMMUNITIES_FILE))
     zone_repo = ZoneRepository(str(COMMUNITY_ZONES_FILE))
     pipeline = ScorePipeline(CommunityEngine(), ZoneEngine(), BuildingEngine())
     amap_provider = AMapProvider(get_amap_api_key(st.secrets))
-    return community_repo, zone_repo, pipeline, amap_provider
+    noise_engine = NoisePointEngine()
+    return community_repo, zone_repo, pipeline, amap_provider, noise_engine
 
 
 def try_local_match(query: str, community_repo: CommunityRepository, district: str = "", subdistrict: str = "", location: tuple[float, float] | None = None) -> dict[str, Any] | None:
-    match = community_repo.search(query, district=district, subdistrict=subdistrict, location=location)
+    cleaned = strip_unit_details(query)
+    match = community_repo.search(cleaned, district=district, subdistrict=subdistrict, location=location, threshold=0.78, max_distance_km=1.2)
     if not match:
         return None
     row = dict(match.row)
@@ -165,59 +141,49 @@ def _parse_location(location_text: str | None) -> tuple[float, float] | None:
         return None
 
 
-def _extract_context_from_regeo(regeo: dict[str, Any] | None) -> tuple[str, str, list[str], tuple[float, float] | None]:
+def _extract_context_from_regeo(regeo: dict[str, Any] | None) -> tuple[str, str, list[str]]:
     if not regeo:
-        return "", "", [], None
+        return "", "", []
     ac = regeo.get("addressComponent", {}) if isinstance(regeo, dict) else {}
     district = str(ac.get("district", "")).strip()
     township = str(ac.get("township", "")).strip()
-    location = _parse_location(str(regeo.get("formatted_address", "")))
     pois = regeo.get("pois", []) if isinstance(regeo.get("pois", []), list) else []
     aois = regeo.get("aois", []) if isinstance(regeo.get("aois", []), list) else []
-    roads = regeo.get("roads", []) if isinstance(regeo.get("roads", []), list) else []
-
     candidate_texts: list[str] = []
     for poi in pois[:5]:
         name = str(poi.get("name", "")).strip()
-        address = str(poi.get("address", "")).strip()
         if name:
             candidate_texts.append(name)
-        if district and name:
-            candidate_texts.append(f"{district}{name}")
-        if district and address:
-            candidate_texts.append(f"{district}{address}")
-    for aoi in aois[:3]:
+            if district:
+                candidate_texts.append(f"{district}{name}")
+    for aoi in aois[:4]:
         name = str(aoi.get("name", "")).strip()
         if name:
             candidate_texts.append(name)
             if district:
                 candidate_texts.append(f"{district}{name}")
-    for road in roads[:2]:
-        name = str(road.get("name", "")).strip()
-        if district and township and name:
-            candidate_texts.append(f"{district}{township}{name}")
-    return district, township, candidate_texts, None
+    return district, township, candidate_texts
 
 
 def _pick_best_match(candidates: list[str], community_repo: CommunityRepository, district: str = "", subdistrict: str = "", location: tuple[float, float] | None = None) -> CommunityMatch | None:
     best: CommunityMatch | None = None
     for candidate in candidates:
-        candidate = str(candidate).strip()
+        candidate = strip_unit_details(str(candidate).strip())
         if not candidate:
             continue
-        threshold = 0.46 if location or district else 0.58
-        match = community_repo.search(candidate, threshold=threshold, district=district, subdistrict=subdistrict, location=location)
+        match = community_repo.search(candidate, threshold=0.78, district=district, subdistrict=subdistrict, location=location, max_distance_km=1.2)
         if match and (best is None or match.score > best.score):
             best = match
     return best
 
 
-def try_amap_normalize(query: str, amap_provider: AMapProvider, community_repo: CommunityRepository) -> tuple[dict[str, Any] | None, dict[str, Any] | None, list[dict[str, Any]]]:
+def try_amap_normalize(query: str, amap_provider: AMapProvider, community_repo: CommunityRepository) -> tuple[dict[str, Any] | None, dict[str, Any] | None, list[dict[str, Any]], dict[str, list[dict[str, Any]]], dict[str, Any] | None]:
     if not amap_provider.enabled() or not query.strip():
-        return None, None, []
+        return None, None, [], {}, None
 
-    tips = amap_provider.input_tips(query)
-    candidates: list[str] = [query]
+    cleaned_query = strip_unit_details(query)
+    tips = amap_provider.input_tips(cleaned_query)
+    candidates: list[str] = [cleaned_query]
     district = ""
     subdistrict = ""
     location: tuple[float, float] | None = None
@@ -239,31 +205,37 @@ def try_amap_normalize(query: str, amap_provider: AMapProvider, community_repo: 
             location = tip_location
 
     best = _pick_best_match(candidates, community_repo, district=district, subdistrict=subdistrict, location=location)
-    if best:
-        row = dict(best.row)
-        row["_match_source"] = f"高德候选归一化 → 本地小区库 / {best.source}"
-        row["_match_confidence"] = round(best.score, 2)
-        row["_query_used"] = best.query_used
-        if best.distance_km is not None:
-            row["_distance_km"] = round(best.distance_km, 2)
-        return row, None, tips
+    geocode = None
+    regeo = None
+    poi_results: dict[str, list[dict[str, Any]]] = {}
 
-    geocode = amap_provider.geocode(query)
-    if not geocode:
-        return None, None, tips
+    if not best:
+        geocode = amap_provider.geocode(cleaned_query)
+        if geocode:
+            formatted = str(geocode.get("formatted_address", "")).strip()
+            location_text = str(geocode.get("location", "")).strip()
+            location = _parse_location(location_text) or location
+            district = district or str(geocode.get("district", "")).strip()
+            regeo = amap_provider.reverse_geocode(location_text) if location_text else None
+            regeo_district, regeo_subdistrict, regeo_candidates = _extract_context_from_regeo(regeo)
+            district = district or regeo_district
+            subdistrict = subdistrict or regeo_subdistrict
+            all_candidates = candidates + [formatted] + regeo_candidates
+            best = _pick_best_match(all_candidates, community_repo, district=district, subdistrict=subdistrict, location=location)
+    else:
+        loc = best.row.get("longitude"), best.row.get("latitude")
+        try:
+            location = (float(loc[0]), float(loc[1]))
+        except Exception:
+            location = None
 
-    formatted = str(geocode.get("formatted_address", "")).strip()
-    location_text = str(geocode.get("location", "")).strip()
-    location = _parse_location(location_text) or location
-    district = district or str(geocode.get("district", "")).strip()
+    debug = {
+        "cleaned_query": cleaned_query,
+        "district": district,
+        "subdistrict": subdistrict,
+        "location": location,
+    }
 
-    regeo = amap_provider.reverse_geocode(location_text) if location_text else None
-    regeo_district, regeo_subdistrict, regeo_candidates, _ = _extract_context_from_regeo(regeo)
-    district = district or regeo_district
-    subdistrict = subdistrict or regeo_subdistrict
-
-    all_candidates = candidates + [formatted] + regeo_candidates
-    best = _pick_best_match(all_candidates, community_repo, district=district, subdistrict=subdistrict, location=location)
     if best:
         row = dict(best.row)
         row["_match_source"] = f"高德标准化地址 → 本地小区库 / {best.source}"
@@ -271,9 +243,27 @@ def try_amap_normalize(query: str, amap_provider: AMapProvider, community_repo: 
         row["_query_used"] = best.query_used
         if best.distance_km is not None:
             row["_distance_km"] = round(best.distance_km, 2)
-        return row, regeo, tips
 
-    return None, regeo, tips
+        if location is None:
+            try:
+                location = (float(row.get("longitude", "")), float(row.get("latitude", "")))
+            except Exception:
+                location = None
+
+        if regeo is None and location is not None:
+            regeo = amap_provider.reverse_geocode(f"{location[0]},{location[1]}")
+
+        if location is not None:
+            location_text = f"{location[0]},{location[1]}"
+            poi_results = {
+                "school": amap_provider.search_around(location_text, "学校", radius=1200),
+                "hospital": amap_provider.search_around(location_text, "医院", radius=1500),
+                "commercial": amap_provider.search_around(location_text, "购物中心", radius=1000),
+                "restaurant": amap_provider.search_around(location_text, "餐饮服务", radius=800),
+            }
+        return row, regeo, tips, poi_results, debug
+
+    return None, regeo, tips, poi_results, debug
 
 
 def score_label(score: int) -> str:
@@ -288,7 +278,28 @@ def score_label(score: int) -> str:
     return "噪音偏高"
 
 
-def render_result(community_row: dict[str, Any], zone_options: list[dict[str, Any]], pipeline: ScorePipeline) -> None:
+def render_noise_panel(noise_summary: dict[str, Any]) -> None:
+    st.markdown('<div class="section-card" style="margin-top:16px;">', unsafe_allow_html=True)
+    st.subheader("周边嘈杂点实验")
+    st.caption("这一步是实验性的：以小区中心点为锚点，抓取学校、医院、商业、餐饮与主干路，再按距离与权重形成附加噪音惩罚。")
+    signals = noise_summary.get("signals", [])
+    if not signals:
+        st.info("这一轮没有抓到足够明确的周边嘈杂点，或周边点距离较远，因此暂不追加惩罚。")
+    else:
+        for sig in signals:
+            label = sig.get("label", "要素")
+            distance_m = sig.get("distance_m")
+            penalty = sig.get("penalty", 0)
+            detail = sig.get("detail", "")
+            st.markdown(
+                f"<div class='signal-row'><div><strong>{label}</strong><br><span class='tiny-note'>{detail}</span></div><div><strong>{distance_m if distance_m is not None else '-'}m</strong>｜惩罚 {penalty:+d}</div></div>",
+                unsafe_allow_html=True,
+            )
+        st.markdown(f"**实验性总惩罚：{noise_summary.get('total_penalty', 0):+d}**")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def render_result(community_row: dict[str, Any], zone_options: list[dict[str, Any]], pipeline: ScorePipeline, noise_summary: dict[str, Any] | None = None) -> None:
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     left, right = st.columns([1.15, 1.0])
 
@@ -302,8 +313,7 @@ def render_result(community_row: dict[str, Any], zone_options: list[dict[str, An
         st.caption(caption)
         if community_row.get("_query_used"):
             st.caption(f"此次用于命中的标准化文本：{community_row.get('_query_used')}")
-        community_engine = CommunityEngine()
-        chips = community_engine.summarize(community_row)
+        chips = CommunityEngine().summarize(community_row)
         if chips:
             st.markdown('<div class="chip-row">' + ''.join(f'<span class="chip">{chip}</span>' for chip in chips) + '</div>', unsafe_allow_html=True)
 
@@ -318,52 +328,55 @@ def render_result(community_row: dict[str, Any], zone_options: list[dict[str, An
         selected_name = st.selectbox("请选择楼栋位置", labels, index=default_index)
         zone_row = zone_map[selected_name]
         result = pipeline.run(community_row, zone_row=zone_row)
+        noise_penalty = int((noise_summary or {}).get("total_penalty", 0))
+        experimental_score = max(50, min(100, result["final_score"] - noise_penalty))
 
         st.markdown(f"**位置解释**：{ZoneEngine().explain(zone_row)}")
         st.markdown(
-            f"<div class='tiny-note'>公式：最终静噪分 = 小区基础分 {result['base_score']} + 分区修正 {result['zone_adjustment']:+d} + 楼栋修正 {result['building_adjustment']:+d}</div>",
+            f"<div class='tiny-note'>基础公式：小区基础分 {result['base_score']} + 分区修正 {result['zone_adjustment']:+d} + 楼栋修正 {result['building_adjustment']:+d} = {result['final_score']}；再叠加实验性周边惩罚 {noise_penalty:+d}，得到实验分 {experimental_score}。</div>",
             unsafe_allow_html=True,
         )
 
     with right:
-        result = pipeline.run(community_row, zone_row=zone_row)
         st.markdown('<div class="score-shell">', unsafe_allow_html=True)
         st.markdown('<div class="score-kicker">Quiet Score</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="score-number">{result["final_score"]}</div>', unsafe_allow_html=True)
-        st.markdown(f"### {score_label(result['final_score'])}")
-        st.write("这个分数不是官方实测分贝，而是住宅体感静噪评分。它更适合帮助你快速判断：同一个小区里，哪类位置更值得优先看。")
+        st.markdown(f'<div class="score-number">{experimental_score}</div>', unsafe_allow_html=True)
+        st.markdown(f"### {score_label(experimental_score)}")
+        st.write("这个分数不是官方实测分贝，而是住宅体感静噪评分。它现在由小区基础分、楼栋位置修正，以及实验性的周边嘈杂点惩罚共同组成。")
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
+    render_noise_panel(noise_summary or {"signals": [], "total_penalty": 0})
 
 
-def render_amap_panel(amap_provider: AMapProvider, tips: list[dict[str, Any]], regeo: dict[str, Any] | None) -> None:
+def render_amap_panel(amap_provider: AMapProvider, tips: list[dict[str, Any]], regeo: dict[str, Any] | None, debug: dict[str, Any] | None) -> None:
     st.markdown('<div id="amap" class="anchor"></div>', unsafe_allow_html=True)
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.subheader("高德接口：当前这一版怎么用")
     if amap_provider.enabled():
-        st.success("已检测到高德 Web 服务 Key。当前代码会按顺序尝试：输入提示 → 地理编码 → 逆地理编码，并把标准化结果自动映射到本地小区库。")
+        st.success("已检测到高德 Web 服务 Key。当前代码会按顺序尝试：输入提示 → 地理编码 → 逆地理编码 → 周边搜索，并把标准化结果严格映射到本地小区库。")
     else:
         st.warning("当前未配置高德 Key。此时仍可使用本地小区库搜索，但不会触发地址标准化与候选提示。")
-
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("**当前代码已接入**")
         st.markdown("""- 输入提示：把模糊输入收敛成候选地址
 - 地理编码：地址 → 经纬度
-- 逆地理编码：经纬度 → 标准地址、主干路、POI、AOI""")
+- 逆地理编码：经纬度 → 标准地址、主干路、POI、AOI
+- 周边搜索：抓学校、医院、商业、餐饮等嘈杂点""")
     with c2:
-        st.markdown("**我们真正会用到的数据**")
-        st.markdown("""- 标准化地址与坐标
-- district / adcode / location
-- roads（特别是 roadlevel=1 的主干路）
-- POI / AOI 线索，用来辅助判断小区与楼栋位置""")
-
+        st.markdown("**这一版的拒识原则**")
+        st.markdown("""- 自动去掉楼号 / 单元号再匹配小区
+- 置信度不足不自动命中
+- 距离本地小区坐标超过约 1km 不自动命中
+- 宁可提示“未命中”，也不乱贴到已有样本小区""")
+    if debug:
+        with st.expander("本次标准化上下文", expanded=False):
+            st.json(debug)
     if tips:
         with st.expander("这次搜索拿到的高德候选", expanded=False):
             for tip in tips[:6]:
                 st.write(f"- {tip.get('name', '')}｜{tip.get('district', '')} {tip.get('address', '')}")
-
     if regeo:
         with st.expander("这次搜索拿到的逆地理编码结果", expanded=False):
             st.json(regeo)
@@ -374,19 +387,19 @@ def render_docs() -> None:
     st.markdown('<div id="principles" class="anchor"></div>', unsafe_allow_html=True)
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.subheader("工作原理")
-    st.write("第一层是小区基础分；第二层是分区修正。输入框先尽量命中我们自己的小区库，未命中时再让高德做地址归一化，把地址尽量收敛到具体小区。")
-    st.write("这一版最关键的工程思想是：高德负责“你在哪儿”，我们的引擎负责“这里该扣几分”。后续要插楼栋引擎、投诉热度引擎、道路权重引擎，都可以通过 score_pipeline 扩进去。")
+    st.write("第一层是小区基础分；第二层是分区修正；第三层开始试验用高德抓取周边嘈杂点，并按距离与类别权重形成附加惩罚。")
+    st.write("高德负责“你在哪儿、周边有哪些点”，我们的引擎负责“这里该扣几分”。后续要插楼栋引擎、投诉热度引擎、道路权重引擎，都可以继续扩进去。")
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div id="faq" class="anchor"></div>', unsafe_allow_html=True)
     st.markdown('<div class="section-card" style="margin-top:16px;">', unsafe_allow_html=True)
     st.subheader("常见问题")
-    with st.expander("为什么不是直接按地址给一个分数？", expanded=False):
-        st.write("因为住宅噪音不是普通 POI 查询。真正有价值的是：同一个小区里，首排临街、中央区、内排安静区、出入口边，这些位置差异很大。")
-    with st.expander("高德有没有北京所有小区每栋楼的现成噪音数据？", expanded=False):
-        st.write("没有现成噪音分。高德更擅长提供地址标准化、坐标、道路、POI、AOI 等空间线索；最终判断仍要靠我们自己的小区与分区规则。")
-    with st.expander("后续能不能升级成楼栋级？", expanded=False):
-        st.write("可以。当前 building_engine 已经预留了接口。等你有 buildings.csv 或楼栋规则表时，只需要把 building_engine 接进 score_pipeline 即可。")
+    with st.expander("为什么输入带楼号时容易错配？", expanded=False):
+        st.write("因为高德标准化的是地址，而你本地库的主键是小区。现在程序会先自动去掉 23号楼、2单元、301室 这类细节，再把结果映射到小区层。")
+    with st.expander("为什么有时候宁可不命中？", expanded=False):
+        st.write("因为样本库还小。现在宁可严格拒识，也不把一个完全不同的小区误贴到已有样本上。")
+    with st.expander("实验性周边惩罚是不是最终版？", expanded=False):
+        st.write("不是。当前只是把学校、医院、商业、餐饮、主干路做成第一批可实验的噪音代理点，后续还会继续细化权重。")
     st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -394,33 +407,35 @@ def main() -> None:
     render_styles()
     render_topbar()
     query, submit = render_hero()
-    community_repo, zone_repo, pipeline, amap_provider = load_services()
+    community_repo, zone_repo, pipeline, amap_provider, noise_engine = load_services()
 
     local_match = None
     regeo = None
     tips: list[dict[str, Any]] = []
+    poi_results: dict[str, list[dict[str, Any]]] = {}
+    debug: dict[str, Any] | None = None
 
     if submit and query.strip():
         local_match = try_local_match(query, community_repo)
         if not local_match:
-            local_match, regeo, tips = try_amap_normalize(query, amap_provider, community_repo)
+            local_match, regeo, tips, poi_results, debug = try_amap_normalize(query, amap_provider, community_repo)
 
         if local_match:
             zones = zone_repo.get_by_community(str(local_match.get("community_code", "")))
             if zones:
-                render_result(local_match, zones, pipeline)
+                noise_summary = noise_engine.evaluate(regeo, poi_results)
+                render_result(local_match, zones, pipeline, noise_summary=noise_summary)
             else:
                 st.warning("已命中小区，但尚未录入该小区的分区规则。")
         else:
             if amap_provider.enabled():
-                st.warning("本地小区库没有命中；高德已完成标准化尝试，但仍未能自动映射到 communities.csv。建议补充更完整地址，或把该小区录入本地小区库。")
+                st.warning("本地小区库没有命中；高德已完成标准化尝试，但根据当前严格规则，仍未能安全映射到 communities.csv。建议补录该小区，而不是强行贴到现有样本。")
             else:
                 st.warning("当前没有命中本地小区库。若你已经配置高德 Key，可以继续补更完整的地址；否则先把该小区录入 communities.csv。")
-
     elif submit:
         st.info("先输入一个北京小区名或详细地址。")
 
-    render_amap_panel(amap_provider, tips, regeo)
+    render_amap_panel(amap_provider, tips, regeo, debug)
     render_docs()
     st.markdown('<div class="footer-space"></div>', unsafe_allow_html=True)
 

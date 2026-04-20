@@ -6,7 +6,7 @@ from typing import Any
 
 import pandas as pd
 
-from text_match import normalize_text, similarity
+from text_match import normalize_text, similarity, strip_unit_details
 
 
 @dataclass
@@ -27,11 +27,11 @@ class CommunityRepository:
 
     def _candidate_fields(self, row: dict[str, Any]) -> list[tuple[str, str]]:
         candidates: list[tuple[str, str]] = []
-        community_name = str(row.get("community_name", ""))
-        address = str(row.get("address", ""))
-        aliases = str(row.get("aliases", ""))
-        district = str(row.get("district", ""))
-        subdistrict = str(row.get("subdistrict", ""))
+        community_name = str(row.get("community_name", "")).strip()
+        address = str(row.get("address", "")).strip()
+        aliases = str(row.get("aliases", "")).strip()
+        district = str(row.get("district", "")).strip()
+        subdistrict = str(row.get("subdistrict", "")).strip()
 
         if community_name:
             candidates.append((community_name, "community_name"))
@@ -61,17 +61,33 @@ class CommunityRepository:
         c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return r * c
 
+    def _exact_match(self, query: str) -> CommunityMatch | None:
+        q = normalize_text(query)
+        q_raw = strip_unit_details(query)
+        for _, row in self.df.iterrows():
+            row_dict = row.to_dict()
+            for candidate, source in self._candidate_fields(row_dict):
+                if normalize_text(candidate) == q:
+                    return CommunityMatch(row=row_dict, score=1.0, source=source, query_used=q_raw)
+        return None
+
     def search(
         self,
         query: str,
-        threshold: float = 0.58,
+        threshold: float = 0.78,
         district: str = "",
         subdistrict: str = "",
         location: tuple[float, float] | None = None,
+        max_distance_km: float = 1.2,
     ) -> CommunityMatch | None:
-        norm_query = normalize_text(query)
+        cleaned_query = strip_unit_details(query)
+        norm_query = normalize_text(cleaned_query)
         if not norm_query:
             return None
+
+        exact = self._exact_match(cleaned_query)
+        if exact:
+            return exact
 
         norm_district = normalize_text(district)
         norm_subdistrict = normalize_text(subdistrict)
@@ -79,58 +95,62 @@ class CommunityRepository:
 
         for _, row in self.df.iterrows():
             row_dict = row.to_dict()
-            best_row_score = 0.0
-            best_source = ""
+            row_best_score = 0.0
+            row_best_source = ""
+            row_district = normalize_text(str(row_dict.get("district", "")))
+            row_subdistrict = normalize_text(str(row_dict.get("subdistrict", "")))
 
             for candidate, source in self._candidate_fields(row_dict):
                 norm_candidate = normalize_text(candidate)
                 if not norm_candidate:
                     continue
-                if norm_candidate == norm_query:
-                    return CommunityMatch(row=row_dict, score=1.0, source=source, query_used=query)
 
                 score = similarity(norm_query, norm_candidate)
                 if norm_query in norm_candidate or norm_candidate in norm_query:
-                    score += 0.08
-
-                row_district = normalize_text(str(row_dict.get("district", "")))
-                row_subdistrict = normalize_text(str(row_dict.get("subdistrict", "")))
-                if norm_district and row_district == norm_district:
-                    score += 0.08
-                if norm_subdistrict and row_subdistrict == norm_subdistrict:
                     score += 0.05
+                if len(norm_query) >= 3 and len(norm_candidate) >= 3 and norm_query[:3] == norm_candidate[:3]:
+                    score += 0.04
+                if norm_district and row_district == norm_district:
+                    score += 0.06
+                elif norm_district and row_district and row_district != norm_district:
+                    score -= 0.12
+                if norm_subdistrict and row_subdistrict == norm_subdistrict:
+                    score += 0.04
 
-                if score > best_row_score:
-                    best_row_score = score
-                    best_source = source
+                if score > row_best_score:
+                    row_best_score = score
+                    row_best_source = source
 
             distance_km = self._distance_km(row_dict, location)
             if distance_km is not None:
                 if distance_km <= 0.35:
-                    best_row_score += 0.18
+                    row_best_score += 0.18
                 elif distance_km <= 0.8:
-                    best_row_score += 0.14
-                elif distance_km <= 1.5:
-                    best_row_score += 0.10
-                elif distance_km <= 3:
-                    best_row_score += 0.06
-                elif distance_km <= 6:
-                    best_row_score += 0.03
-                elif distance_km >= 15:
-                    best_row_score -= 0.05
+                    row_best_score += 0.10
+                elif distance_km <= max_distance_km:
+                    row_best_score += 0.04
+                else:
+                    row_best_score -= 0.50
 
-            if best_match is None or best_row_score > best_match.score:
-                best_match = CommunityMatch(
-                    row=row_dict,
-                    score=best_row_score,
-                    source=best_source or "context",
-                    query_used=query,
-                    distance_km=distance_km,
-                )
+            # Reject obvious false positives when neither name nor district is strong enough.
+            if row_best_score < threshold:
+                continue
+            if distance_km is not None and distance_km > max_distance_km:
+                continue
+            if norm_district and row_district and row_district != norm_district and row_best_score < 0.92:
+                continue
 
-        if best_match and best_match.score >= threshold:
-            return best_match
-        return None
+            candidate_match = CommunityMatch(
+                row=row_dict,
+                score=row_best_score,
+                source=row_best_source or "context",
+                query_used=cleaned_query,
+                distance_km=distance_km,
+            )
+            if best_match is None or candidate_match.score > best_match.score:
+                best_match = candidate_match
+
+        return best_match
 
     def get_by_code(self, community_code: str) -> dict[str, Any] | None:
         rows = self.df[self.df["community_code"].astype(str) == str(community_code)]

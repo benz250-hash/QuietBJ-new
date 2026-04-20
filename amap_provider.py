@@ -11,6 +11,7 @@ class AMapProvider:
     GEOCODE_URL = "https://restapi.amap.com/v3/geocode/geo"
     REGEO_URL = "https://restapi.amap.com/v3/geocode/regeo"
     INPUT_TIPS_URL = "https://restapi.amap.com/v3/assistant/inputtips"
+    AROUND_URL = "https://restapi.amap.com/v3/place/around"
 
     def __init__(self, api_key: str):
         self.api_key = api_key.strip()
@@ -41,12 +42,7 @@ class AMapProvider:
     def geocode(self, address: str, city: str = AMAP_CITY) -> dict[str, Any] | None:
         if not self.enabled() or not address.strip():
             return None
-        params = {
-            "key": self.api_key,
-            "address": address.strip(),
-            "city": city,
-            "output": "JSON",
-        }
+        params = {"key": self.api_key, "address": address.strip(), "city": city, "output": "JSON"}
         try:
             response = requests.get(self.GEOCODE_URL, params=params, timeout=TIMEOUT_SECONDS)
             response.raise_for_status()
@@ -66,6 +62,7 @@ class AMapProvider:
             "location": location.strip(),
             "extensions": "all",
             "roadlevel": "1",
+            "radius": "1200",
             "output": "JSON",
         }
         try:
@@ -77,3 +74,29 @@ class AMapProvider:
         if str(payload.get("status")) != "1":
             return None
         return payload.get("regeocode")
+
+    def search_around(self, location: str, keywords: str, radius: int = 1000, city: str = AMAP_CITY) -> list[dict[str, Any]]:
+        if not self.enabled() or not location.strip() or not keywords.strip():
+            return []
+        params = {
+            "key": self.api_key,
+            "location": location.strip(),
+            "keywords": keywords.strip(),
+            "radius": str(radius),
+            "city": city,
+            "sortrule": "distance",
+            "offset": "20",
+            "page": "1",
+            "extensions": "base",
+            "output": "JSON",
+        }
+        try:
+            response = requests.get(self.AROUND_URL, params=params, timeout=TIMEOUT_SECONDS)
+            response.raise_for_status()
+            payload = response.json()
+        except Exception:
+            return []
+        if str(payload.get("status")) != "1":
+            return []
+        pois = payload.get("pois", [])
+        return pois if isinstance(pois, list) else []

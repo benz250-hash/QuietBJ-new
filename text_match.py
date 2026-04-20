@@ -1,18 +1,30 @@
 from __future__ import annotations
 
 import difflib
-
+import re
 
 DROP_TOKENS = [
     "北京市", "北京", "小区", "社区", "家园", "一期", "二期", "三期", "四期", "五期",
-    "号楼", "幢", "栋", "单元", "室", "座",
+]
+
+DETAIL_PATTERNS = [
+    r"\d+号楼", r"\d+栋", r"\d+幢", r"\d+座", r"\d+单元", r"\d+室", r"\d+层",
+    r"[A-Za-z]\d+座", r"[A-Za-z]座", r"楼栋", r"#\d+",
 ]
 
 
-def normalize_text(text: str | None) -> str:
+def strip_unit_details(text: str | None) -> str:
     if text is None:
         return ""
-    value = str(text).strip().lower().replace(" ", "")
+    value = str(text).strip()
+    for pattern in DETAIL_PATTERNS:
+        value = re.sub(pattern, "", value)
+    value = re.sub(r"\s+", "", value)
+    return value
+
+
+def normalize_text(text: str | None) -> str:
+    value = strip_unit_details(text).lower().replace(" ", "")
     for token in DROP_TOKENS:
         value = value.replace(token, "")
     return value
