@@ -3,6 +3,8 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 from typing import Any
+import re
+import time
 
 import streamlit as st
 
@@ -11,7 +13,7 @@ from community_repository import CommunityRepository
 from config import BACKGROUND_FILE, COMMUNITIES_FILE, COMMUNITY_ZONES_FILE, DEFAULT_BASE_SCORE, get_amap_api_key
 from noise_point_engine import NoisePointEngine
 from score_engine import ScoreEngine
-from text_match import strip_unit_details
+from text_match import strip_unit_details, normalize_text, similarity
 from zone_repository import ZoneRepository
 
 st.set_page_config(page_title="QuietBJ｜安宁北京", page_icon="🔇", layout="wide")
@@ -42,6 +44,155 @@ def build_summary_line(signals: list[dict[str, Any]]) -> str:
     if len(labels) == 1:
         return f"该楼栋当前主要受{labels[0]}影响。"
     return f"该楼栋当前主要受{labels[0]}与{labels[1]}影响。"
+
+
+def init_search_state() -> None:
+    st.session_state.setdefault("search_input", st.session_state.get("last_query", ""))
+    st.session_state.setdefault("selected_search_suggestion", "")
+    st.session_state.setdefault("suggestion_cache", {})
+    st.session_state.setdefault("suggestion_request_count", 0)
+    st.session_state.setdefault("suggestion_last_nonempty", "")
+
+
+def reset_suggestion_session() -> None:
+    st.session_state["selected_search_suggestion"] = ""
+    st.session_state["suggestion_request_count"] = 0
+    st.session_state["suggestion_last_nonempty"] = ""
+    # keep cache to save money
+
+
+def trigger_ready_for_suggestions(query: str) -> bool:
+    q = query.strip()
+    if not q:
+        return False
+    cjk_count = len(re.findall(r"[\u4e00-\u9fff]", q))
+    compact = re.sub(r"\s+", "", q)
+    # 省钱模式：至少 3 个汉字，或 4 个非空字符才开始联想
+    return cjk_count >= 3 or len(compact) >= 4
+
+
+def build_local_suggestions(query: str, community_repo: CommunityRepository, limit: int = 5) -> list[dict[str, str]]:
+    q = query.strip()
+    cleaned = strip_unit_details(q)
+    norm_q = normalize_text(cleaned)
+    if not norm_q:
+        return []
+    rows: list[tuple[float, dict[str, str]]] = []
+    seen: set[str] = set()
+    for _, row in community_repo.df.iterrows():
+        row_dict = row.to_dict()
+        district = str(row_dict.get("district", "")).strip()
+        community_name = str(row_dict.get("community_name", "")).strip()
+        address = str(row_dict.get("address", "")).strip()
+        aliases = [x.strip() for x in str(row_dict.get("aliases", "")).split("|") if x.strip()]
+        candidates = [community_name] + aliases
+        best_score = 0.0
+        best_value = ""
+        for cand in candidates:
+            nc = normalize_text(cand)
+            if not nc:
+                continue
+            if norm_q not in nc and nc not in norm_q and similarity(norm_q, nc) < 0.55:
+                continue
+            score = similarity(norm_q, nc)
+            if norm_q in nc or nc in norm_q:
+                score += 0.10
+            if cand == community_name:
+                score += 0.04
+            if score > best_score:
+                best_score = score
+                best_value = cand
+        if best_score <= 0:
+            continue
+        value = community_name or best_value
+        key = f"{value}|{district}"
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append((
+            best_score,
+            {
+                "value": value,
+                "primary": value,
+                "secondary": f"{district} {address}".strip(),
+                "source": "local",
+            },
+        ))
+    rows.sort(key=lambda x: x[0], reverse=True)
+    return [item for _, item in rows[:limit]]
+
+
+def build_remote_suggestions(query: str, amap: AMapProvider, limit: int = 5) -> list[dict[str, str]]:
+    q = query.strip()
+    if not q or not amap.enabled():
+        return []
+    cache_key = f"bj::{q}"
+    cache = st.session_state["suggestion_cache"]
+    now = time.time()
+    cached = cache.get(cache_key)
+    if cached and now - float(cached.get("ts", 0)) < 600:
+        return cached.get("items", [])
+
+    if st.session_state.get("suggestion_request_count", 0) >= 4:
+        return []
+
+    tips = amap.input_tips(q)
+    st.session_state["suggestion_request_count"] = st.session_state.get("suggestion_request_count", 0) + 1
+
+    items: list[tuple[float, dict[str, str]]] = []
+    seen: set[str] = set()
+    for tip in tips:
+        name = str(tip.get("name", "")).strip()
+        district = str(tip.get("district", "")).strip()
+        address = str(tip.get("address", "")).strip()
+        if not name:
+            continue
+        score = 0.0
+        if "北京" in district or district.endswith("区"):
+            score += 1.2
+        text = f"{district}{name}{address}"
+        if any(tok in text for tok in ["号楼", "栋", "座"]):
+            score += 0.9
+        if any(tok in text for tok in ["小区", "社区", "苑", "园", "里", "城", "区"]):
+            score += 0.5
+        if any(tok in text for tok in ["地铁", "公交", "站", "酒店", "公园", "大厦"]):
+            score -= 0.35
+        key = f"{name}|{district}|{address}"
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append((score, {
+            "value": name,
+            "primary": name,
+            "secondary": f"{district} {address}".strip(),
+            "source": "amap",
+        }))
+    items.sort(key=lambda x: x[0], reverse=True)
+    results = [item for _, item in items[:limit]]
+    cache[cache_key] = {"ts": now, "items": results}
+    return results
+
+
+def merged_suggestions(query: str, community_repo: CommunityRepository, amap: AMapProvider) -> list[dict[str, str]]:
+    if not trigger_ready_for_suggestions(query):
+        return []
+    local_items = build_local_suggestions(query, community_repo, limit=5)
+    # 省钱：本地有 3 条及以上候选时，不打高德
+    remote_items: list[dict[str, str]] = []
+    if len(local_items) < 3:
+        remote_items = build_remote_suggestions(query, amap, limit=5)
+
+    merged: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in local_items + remote_items:
+        key = f"{item['primary']}|{item['secondary']}"
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+        if len(merged) >= 5:
+            break
+    return merged
 
 
 def parse_geocode_result(query: str, community_repo: CommunityRepository, amap: AMapProvider) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any] | None, str, dict[str, Any] | None]:
@@ -167,7 +318,15 @@ def render_styles(result_mode: bool) -> None:
         div[data-testid="stFormSubmitButton"] > button[kind="secondary"] {{background:rgba(255,255,255,0.92) !important; border:1px solid rgba(24,37,31,0.10) !important; color:#31443b !important;}}
         div[data-testid="stButton"] > button[kind="primary"], div[data-testid="stFormSubmitButton"] > button[kind="primary"] {{background:#173a2d !important; border:1px solid #173a2d !important; color:white !important;}}
 
-        .search-footnote {{margin-top:10px; text-align:center; color:{'rgba(255,255,255,0.74)' if not result_mode else '#67746c'}; font-size:12px;}}
+        
+        .suggestion-wrap {margin-top: 10px; border-radius: 16px; overflow: hidden; background: rgba(255,255,255,0.95); border: 1px solid rgba(21,34,26,0.08);}
+        .suggestion-head {padding: 10px 14px 6px; font-size: 12px; color: #65746b; letter-spacing: .04em;}
+        .suggestion-row {padding: 6px 0;}
+        .suggestion-meta {padding: 0 14px 8px; font-size: 12px; color: #6d7a72;}
+        div[data-testid="stButton"] > button[kind="secondary"] {background: rgba(255,255,255,0.94) !important; border: 1px solid rgba(24,37,31,0.10) !important; color: #31443b !important;}
+        div[data-testid="stButton"] > button[kind="primary"] {background:#173a2d !important; border:1px solid #173a2d !important; color:white !important;}
+.search-footnote {{margin-top:10px; text-align:center; color:{'rgba(255,255,255,0.74)' if not result_mode else '#67746c'}; font-size:12px;}}
+        .result-shell-title {{font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:#6f7c74; margin-top:8px; margin-bottom:12px; font-family: var(--font-sans) !important;}}
         .card-title {{font-size:24px; font-weight:700; color:#16241e; margin-bottom:6px; font-family: var(--font-display) !important; letter-spacing:-0.01em;}}
         .card-sub {{font-size:14px; line-height:1.7; color:#536159; margin-bottom:10px;}}
         .result-divider {{height:12px;}}
@@ -180,6 +339,7 @@ def render_styles(result_mode: bool) -> None:
             box-shadow: 0 14px 42px rgba(16,24,19,0.08) !important;
             padding: 8px 10px !important;
         }}
+        .overview-kicker {{font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:#748178; font-family: var(--font-sans) !important;}}
         .overview-name {{font-size:38px; line-height:1.08; font-weight:700; color:#15231d; margin:8px 0; font-family: var(--font-display) !important; letter-spacing:-0.02em;}}
         .overview-line {{font-size:16px; line-height:1.7; color:#2f4138;}}
         .pill-row {{display:flex; flex-wrap:wrap; gap:10px; margin-top:14px;}}
@@ -197,6 +357,7 @@ def render_styles(result_mode: bool) -> None:
         .deduct-title {{font-size:16px; font-weight:700; color:#1b2a23; font-family: var(--font-display) !important;}}
         .deduct-detail {{font-size:13px; color:#67756d; margin-top:4px;}}
         .deduct-right {{font-size:16px; font-weight:700; color:#173a2d; white-space:nowrap;}}
+        .plain-band {{background:#f4f6f3; border-radius:24px; padding:18px 18px 22px; margin-top:14px; box-shadow: inset 0 0 0 1px rgba(21,34,26,0.04);}}
 
         @media (max-width: 900px) {{
             .block-container {{padding-left:.9rem !important; padding-right:.9rem !important;}}
@@ -280,35 +441,61 @@ def render_hero() -> None:
     )
 
 
-def render_search(compact: bool = False) -> tuple[str, bool, bool]:
+
+def render_search(compact: bool = False, community_repo: CommunityRepository | None = None, amap: AMapProvider | None = None) -> tuple[str, bool, bool]:
+    init_search_state()
+
     if compact:
         st.markdown('<div class="compact-title">New Search</div>', unsafe_allow_html=True)
         st.markdown('<div class="result-page-intro">继续输入新的北京小区或楼栋地址，系统会重新定位楼栋并更新评估结果。</div>', unsafe_allow_html=True)
-        layout = [5.5, 1.25, 1.0]
-    else:
-        layout = [5.0, 1.3, 1.0]
 
-    with st.form("hero_search", clear_on_submit=False):
-        query = st.text_input(
-            "hero_query",
-            placeholder="输入北京小区或楼栋地址，例如：新龙城6号楼 / 花家地西里2号楼",
-            label_visibility="collapsed",
-        )
-        _, center, _ = st.columns([1.4, 1.2, 1.4])
-        with center:
-            submit = st.form_submit_button("开始查询", type="primary", use_container_width=True)
-        clear = False
+    query = st.text_input(
+        "hero_query",
+        key="search_input",
+        placeholder="输入北京小区或楼栋地址，例如：新龙城6号楼 / 花家地西里2号楼",
+        label_visibility="collapsed",
+    ).strip()
+
+    if not query:
+        reset_suggestion_session()
+    else:
+        st.session_state["suggestion_last_nonempty"] = query
+
+    if st.session_state.get("selected_search_suggestion") and query != st.session_state.get("selected_search_suggestion"):
+        st.session_state["selected_search_suggestion"] = ""
+
+    suggestions: list[dict[str, str]] = []
+    if community_repo is not None and amap is not None and not compact:
+        selected = st.session_state.get("selected_search_suggestion", "")
+        if query and query != selected:
+            suggestions = merged_suggestions(query, community_repo, amap)
+
+    if suggestions and not compact:
+        st.markdown('<div class="suggestion-wrap"><div class="suggestion-head">匹配建议（北京优先 · 本地库优先）</div></div>', unsafe_allow_html=True)
+        for idx, item in enumerate(suggestions):
+            if st.button(item["primary"], key=f"suggest::{idx}", use_container_width=True):
+                st.session_state["search_input"] = item["value"]
+                st.session_state["selected_search_suggestion"] = item["value"]
+                st.rerun()
+            if item.get("secondary"):
+                st.markdown(f'<div class="suggestion-meta">{item["secondary"]}</div>', unsafe_allow_html=True)
+
+    left, center, right = st.columns([1.4, 1.2, 1.4])
+    with center:
+        submit = st.button("开始查询", type="primary", use_container_width=True)
+
     st.markdown(
-        f'<div class="search-footnote">建议输入：小区名 + 楼号。系统会先识别小区，再围绕更接近楼栋的坐标测算外部噪音暴露。</div>',
+        '<div class="search-footnote">省钱模式已启用：3 个汉字后才联想，优先本地库，只有本地候选不足时才调用高德输入提示。</div>',
         unsafe_allow_html=True,
     )
-    return query, submit, clear
+    return query, submit, False
 
 
 def render_overview_card(query: str, community_row: dict[str, Any], result: dict[str, Any], signals: list[dict[str, Any]]) -> None:
     with st.container(border=True):
         left, right = st.columns([1.25, 0.95], vertical_alignment="top")
         with left:
+            st.markdown('<div class="overview-kicker">Result Overview</div>', unsafe_allow_html=True)
             st.markdown(f'<div class="overview-name">{community_row.get("community_name", "目标小区")}</div>', unsafe_allow_html=True)
             st.markdown(f'<div class="overview-line">{build_summary_line(signals)}</div>', unsafe_allow_html=True)
             pills = [f'<span class="pill">标准基准分 {DEFAULT_BASE_SCORE}</span>']
@@ -371,14 +558,20 @@ def render_position_card(result: dict[str, Any], zone_labels: list[str], zone_ke
         st.markdown('<div class="card-title">楼栋位置调整</div>', unsafe_allow_html=True)
         st.markdown('<div class="card-sub">该部分用于模拟不同楼栋位置语境下的环境差异，例如临街、中央区或内排安静区。</div>', unsafe_allow_html=True)
         st.selectbox("楼栋位置", zone_labels, key=zone_key, label_visibility="collapsed")
-        summary = (
-            f"当前按“{result['zone_name']}”处理；"
-            f"楼栋位置调整 {result['zone_adjust']:+d}，"
-            f"建筑条件调整 {result['build_bonus']:+d}，"
-            f"密度调整 -{result['density_penalty']}。"
-        )
-        st.markdown(f"<div class='subtle' style='margin-top:12px;'>{summary}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='subtle' style='margin-top:6px;'>位置说明：{result['zone_description']}。</div>", unsafe_allow_html=True)
+        c1, c2, c3, c4 = st.columns(4)
+        items = [
+            (c1, "标准基准", DEFAULT_BASE_SCORE, "统一起点评估"),
+            (c2, "楼栋位置", f"{result['zone_adjust']:+d}", result['zone_name']),
+            (c3, "建筑加分", f"{result['build_bonus']:+d}", "楼龄代理值"),
+            (c4, "密度调整", f"-{result['density_penalty']}", "容积率代理值"),
+        ]
+        for col, title, value, note in items:
+            with col:
+                st.markdown(
+                    f'<div class="metric-box"><div class="metric-label">{title}</div><div class="metric-value">{value}</div><div class="metric-note">{note}</div></div>',
+                    unsafe_allow_html=True,
+                )
+        st.markdown(f"<div class='subtle' style='margin-top:12px;'>位置说明：{result['zone_description']}。</div>", unsafe_allow_html=True)
 
 
 def render_debug_card(geocode_used: dict[str, Any] | None, building_location_text: str, community_row: dict[str, Any], tip_list: list[dict[str, Any]], regeo: dict[str, Any] | None) -> None:
@@ -417,24 +610,24 @@ def main() -> None:
 
     if result_mode:
         render_topbar(light=True)
-        submitted = False
-        clear = False
+        query, submitted, clear = render_search(compact=True, community_repo=community_repo, amap=amap)
     else:
         render_topbar(light=False)
         render_hero()
         left, center, right = st.columns([1.0, 4.9, 1.0])
         with center:
-            query, submitted, clear = render_search(compact=False)
+            query, submitted, clear = render_search(compact=False, community_repo=community_repo, amap=amap)
 
     if clear:
         st.session_state["last_query"] = ""
-        # Clear any remembered zone selection too.
+        reset_suggestion_session()
         for key in list(st.session_state.keys()):
             if key.startswith("zone_select::"):
                 del st.session_state[key]
         st.rerun()
     if submitted:
         st.session_state["last_query"] = query.strip()
+        reset_suggestion_session()
         st.rerun()
 
     query = st.session_state.get("last_query", "").strip()
@@ -477,6 +670,9 @@ def main() -> None:
 
     result = compute_position_result(zone_options, community_row, score_engine, int(noise_summary.get("total_penalty", 0)), selected_name)
 
+    if result_mode:
+        st.markdown('<div class="plain-band">', unsafe_allow_html=True)
+    st.markdown('<div class="result-shell-title">Residential Assessment</div>', unsafe_allow_html=True)
     render_overview_card(query, community_row, result, noise_summary.get("signals", []))
     st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
     render_penalty_card(noise_summary)
@@ -484,6 +680,8 @@ def main() -> None:
     render_position_card(result, zone_labels, zone_key)
     st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
     render_debug_card(geocode_used, building_location_text, community_row, tip_list, regeo)
+    if result_mode:
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
