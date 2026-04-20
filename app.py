@@ -27,40 +27,39 @@ def render_styles() -> None:
         <style>
         .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stToolbar"], section.main {{background: transparent !important;}}
         .block-container {{max-width: 100% !important; padding-top: 0 !important; padding-left: 2rem !important; padding-right: 2rem !important;}}
-        .bg-layer {{position: fixed; inset: 0; z-index: -20; pointer-events: none; background-image: linear-gradient(180deg, rgba(8,15,12,0.30), rgba(8,15,12,0.58)), url("data:image/jpeg;base64,{bg_base64}"); background-size: cover; background-position: center center; background-repeat: no-repeat;}}
-        .topbar {{display: flex; justify-content: space-between; align-items: center; padding: 14px 0 0; color: #fff;}}
-        .brand {{font-size: 20px; font-weight: 700; letter-spacing: 0.08em; opacity: 0.70;}}
-        .hero {{min-height: 56vh; display: flex; align-items: flex-start; justify-content: center; padding-top: 4.8vh;}}
-        .hero-box {{width: min(940px, 96%); text-align: center; color: #fff; margin: 0 auto;}}
-        .hero-kicker {{font-size: 12px; letter-spacing: 0.24em; text-transform: uppercase; opacity: 0.86; margin-bottom: 10px;}}
-        .hero-title {{font-size: clamp(44px, 6vw, 82px); font-weight: 800; line-height: 1.02; margin: 0; text-shadow: 0 8px 32px rgba(0,0,0,0.22);}}
-        .hero-sub {{font-size: 16px; line-height: 1.8; max-width: 760px; margin: 14px auto 0; color: rgba(255,255,255,0.95);}}
-        .hero-note {{display: inline-block; margin-top: 16px; padding: 10px 16px; border-radius: 999px; background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.20); color: rgba(255,255,255,0.94); font-size: 12px; letter-spacing: 0.03em;}}
-        .search-wrap {margin-top: 18px; margin-bottom: 18px;}
-        .glass-card {background: rgba(255,255,255,0.86); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,0.34); border-radius: 24px; box-shadow: 0 24px 80px rgba(0,0,0,0.16); padding: 14px 14px 10px; max-width: 820px; margin: 0 auto;}
-        .search-footnote {font-size: 12px; color: #748078; text-align: left; padding: 4px 4px 2px;}
-        .section-card {{background: rgba(255,255,255,0.95); border: 1px solid rgba(20,36,28,0.08); border-radius: 22px; padding: 22px 22px; box-shadow: 0 12px 40px rgba(26,39,31,0.08);}}
-        .score-shell {{background: linear-gradient(180deg, rgba(19,60,42,0.97), rgba(23,81,58,0.96)); color: #fff; border-radius: 22px; padding: 28px; box-shadow: 0 18px 45px rgba(14,44,31,0.25);}}
-        .score-number {{font-size: 84px; line-height: 1; font-weight: 800; margin: 10px 0 6px;}}
-        .score-kicker {{opacity: 0.78; letter-spacing: 0.12em; text-transform: uppercase; font-size: 12px;}}
-        .chip-row {{display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px;}}
-        .chip {{padding: 8px 12px; border-radius: 999px; background: #eef4f0; color: #234632; font-size: 13px; border: 1px solid #d8e4dc;}}
-        .signal-row {{display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px dashed #dfe7e2;}}
-        .tiny-note {{font-size: 13px; color: #778178;}}
-        .anchor {{position: relative; top: -90px; visibility: hidden;}}
-        .result-shell {{margin-top: 0;}}
-        div[data-testid="stTextInputRootElement"] input {border-radius: 16px !important; height: 54px !important; font-size: 17px !important; border: 1px solid rgba(20,42,33,0.10) !important; box-shadow: none !important; background: rgba(255,255,255,0.96) !important;}
-        div[data-testid="stTextInputRootElement"] input::placeholder {color: rgba(70,78,74,0.44) !important;}
-        div[data-testid="InputInstructions"] {display: none !important;}
-        div[data-testid="stWidgetLabel"] {display: none !important;}
-        div[data-testid="stSelectbox"] > div {border-radius: 14px !important;}
-        div.stButton > button {height: 48px; border-radius: 14px; font-weight: 700; box-shadow: none !important;}
-        div.stButton > button[kind="primary"] {background: #17382c !important; border: 1px solid #17382c !important; color: white !important;}
-        div.stButton > button[kind="secondary"] {background: rgba(255,255,255,0.34) !important; border: 1px solid rgba(255,255,255,0.18) !important; color: rgba(255,255,255,0.88) !important;}
+        .bg-layer {{position: fixed; inset: 0; z-index: -20; pointer-events: none; background-image: linear-gradient(180deg, rgba(8,15,12,0.26), rgba(8,15,12,0.60)), url("data:image/jpeg;base64,{bg_base64}"); background-size: cover; background-position: center center; background-repeat: no-repeat;}}
+        .topbar {{display:flex; justify-content:space-between; align-items:center; padding:14px 0 0; color:#fff;}}
+        .brand {{font-size:16px; font-weight:600; letter-spacing:0.08em; opacity:0.56;}}
+        .hero {{min-height: 50vh; display:flex; align-items:flex-start; justify-content:center; padding-top: 5.2vh;}}
+        .hero-box {{width:min(940px, 96%); text-align:center; color:#fff; margin:0 auto;}}
+        .hero-kicker {{font-size:11px; letter-spacing:0.24em; text-transform:uppercase; opacity:0.82; margin-bottom:10px;}}
+        .hero-title {{font-size: clamp(44px, 6vw, 82px); font-weight:800; line-height:1.02; margin:0; text-shadow:0 8px 32px rgba(0,0,0,0.22);}}
+        .hero-sub {{font-size:15px; line-height:1.75; max-width:760px; margin:14px auto 0; color:rgba(255,255,255,0.95);}}
+        .hero-note {{display:inline-block; margin-top:14px; padding:9px 14px; border-radius:999px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.16); color:rgba(255,255,255,0.92); font-size:11px; letter-spacing:0.04em;}}
+        .search-wrap {{max-width:840px; margin: 16px auto 6px auto;}}
+        .search-inline {{background: rgba(255,255,255,0.14); backdrop-filter: blur(12px); border:1px solid rgba(255,255,255,0.14); border-radius:22px; box-shadow:0 20px 70px rgba(0,0,0,0.14); padding:10px;}}
+        .search-meta {{max-width:840px; margin: 8px auto 0 auto; text-align:center; color:rgba(255,255,255,0.72); font-size:12px;}}
+        .section-card {{background: rgba(255,255,255,0.95); border:1px solid rgba(20,36,28,0.08); border-radius:22px; padding:22px 22px; box-shadow:0 12px 40px rgba(26,39,31,0.08);}}
+        .score-shell {{background: linear-gradient(180deg, rgba(19,60,42,0.97), rgba(23,81,58,0.96)); color:#fff; border-radius:22px; padding:28px; box-shadow:0 18px 45px rgba(14,44,31,0.25);}}
+        .score-number {{font-size:84px; line-height:1; font-weight:800; margin:10px 0 6px;}}
+        .score-kicker {{opacity:0.78; letter-spacing:0.12em; text-transform:uppercase; font-size:12px;}}
+        .chip-row {{display:flex; flex-wrap:wrap; gap:10px; margin-top:14px;}}
+        .chip {{padding:8px 12px; border-radius:999px; background:#eef4f0; color:#234632; font-size:13px; border:1px solid #d8e4dc;}}
+        .signal-row {{display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px dashed #dfe7e2;}}
+        .tiny-note {{font-size:13px; color:#778178;}}
+        .anchor {{position: relative; top:-90px; visibility:hidden;}}
+        .result-shell {{margin-top: 18px;}}
+        div[data-testid="stTextInputRootElement"] input {{border-radius:16px !important; height:52px !important; font-size:17px !important; border:0 !important; box-shadow:none !important; background: rgba(255,255,255,0.96) !important;}}
+        div[data-testid="stTextInputRootElement"] input::placeholder {{color: rgba(70,78,74,0.42) !important;}}
+        div[data-testid="InputInstructions"], div[data-testid="stWidgetLabel"] {{display:none !important;}}
+        div[data-testid="stSelectbox"] > div {{border-radius:14px !important;}}
+        div.stButton > button {{height:46px; border-radius:14px; font-weight:700; box-shadow:none !important;}}
+        div.stButton > button[kind="primary"] {{background:#16372b !important; border:1px solid #16372b !important; color:white !important;}}
+        div.stButton > button[kind="secondary"] {{background: rgba(255,255,255,0.08) !important; border:1px solid rgba(255,255,255,0.10) !important; color: rgba(255,255,255,0.82) !important;}}
         @media (max-width: 900px) {{
             .block-container {{padding-left: 1rem !important; padding-right: 1rem !important;}}
-            .hero-sub {{font-size: 15px;}}
-            .brand {{font-size: 18px;}}
+            .hero-sub {{font-size:14px;}}
+            .brand {{font-size:15px;}}
         }}
         </style>
         <div class="bg-layer"></div>
@@ -78,22 +77,12 @@ def render_header() -> None:
                 <div class="hero-kicker">BEIJING RESIDENTIAL CALM INDEX</div>
                 <h1 class="hero-title">安宁北京</h1>
                 <div class="hero-sub">楼栋级住宅环境评估引擎。识别小区，定位楼栋，测算道路、商业、学校、医院与轨道暴露。</div>
-                <div class="hero-note">默认基准 75 · 分区修正 · 建筑加分 · 周边噪音惩罚</div>
+                <div class="hero-note">默认基准 75 · 楼栋修正 · 外部暴露惩罚</div>
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-
-
-def parse_location_text(text: str | None) -> tuple[float, float] | None:
-    if not text:
-        return None
-    try:
-        lon, lat = [float(x) for x in str(text).split(',', 1)]
-        return lon, lat
-    except Exception:
-        return None
 
 
 def label_score(score: int) -> str:
@@ -109,21 +98,22 @@ def label_score(score: int) -> str:
 
 
 def render_search() -> tuple[str, bool, bool]:
-    left, center, right = st.columns([1.2, 4.4, 1.2])
+    left, center, right = st.columns([1.15, 4.7, 1.15])
     with center:
-        st.markdown('<div class="search-wrap"><div class="glass-card">', unsafe_allow_html=True)
-        with st.form('search_form', clear_on_submit=False):
+        st.markdown('<div class="search-wrap"><div class="search-inline">', unsafe_allow_html=True)
+        c1, c2, c3 = st.columns([6.2, 1.3, 1.0])
+        with c1:
             query = st.text_input(
                 'search_query',
                 placeholder='输入北京小区或楼栋地址，例如：新龙城6号楼 / 花家地西里2号楼',
                 label_visibility='collapsed',
             )
-            c1, c2 = st.columns([1.2, 0.8])
-            with c1:
-                submitted = st.form_submit_button('开始查询', type='primary', use_container_width=True)
-            with c2:
-                clear = st.form_submit_button('清空', use_container_width=True)
-        st.markdown('<div class="search-footnote">建议输入：小区名 + 楼号。系统会先识别小区，再围绕更接近楼栋的坐标测算外部噪音暴露。</div></div></div>', unsafe_allow_html=True)
+        with c2:
+            submitted = st.button('开始查询', type='primary', use_container_width=True)
+        with c3:
+            clear = st.button('清空', use_container_width=True)
+        st.markdown('</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="search-meta">建议输入：小区名 + 楼号。系统会先识别小区，再围绕更接近楼栋的坐标测算外部噪音暴露。</div>', unsafe_allow_html=True)
     return query, submitted, clear
 
 
@@ -136,12 +126,20 @@ def main() -> None:
     noise_engine = NoisePointEngine()
     score_engine = ScoreEngine()
 
+    if 'last_query' not in st.session_state:
+        st.session_state['last_query'] = ''
+
     query, submitted, clear = render_search()
 
     if clear:
+        st.session_state['last_query'] = ''
         st.rerun()
 
-    if not submitted or not query.strip():
+    if submitted:
+        st.session_state['last_query'] = query.strip()
+
+    query = st.session_state.get('last_query', '')
+    if not query:
         return
 
     cleaned_query = strip_unit_details(query)
