@@ -208,7 +208,52 @@ def render_styles(result_mode: bool) -> None:
             .overview-name {{font-size:32px;}}
             .metric-grid {{grid-template-columns:repeat(2, minmax(0,1fr));}}
         }}
-        </style>
+        
+/* Strong Streamlit form button overrides */
+div[data-testid="stForm"] button[kind="primary"],
+div[data-testid="stForm"] button[kind="primaryFormSubmit"],
+div[data-testid="stForm"] button[data-testid="baseButton-primary"],
+div[data-testid="stForm"] button[data-testid="stBaseButton-primary"] {
+    background: #173a2d !important;
+    border: 1px solid #173a2d !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    box-shadow: none !important;
+}
+div[data-testid="stForm"] button[kind="primary"]:hover,
+div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover,
+div[data-testid="stForm"] button[data-testid="baseButton-primary"]:hover,
+div[data-testid="stForm"] button[data-testid="stBaseButton-primary"]:hover {
+    background: #1d4636 !important;
+    border-color: #1d4636 !important;
+    color: #ffffff !important;
+}
+div[data-testid="stForm"] button[kind="secondary"],
+div[data-testid="stForm"] button[kind="secondaryFormSubmit"],
+div[data-testid="stForm"] button[data-testid="baseButton-secondary"],
+div[data-testid="stForm"] button[data-testid="stBaseButton-secondary"] {
+    background: rgba(255,255,255,0.92) !important;
+    border: 1px solid rgba(24,37,31,0.10) !important;
+    color: #31443b !important;
+    -webkit-text-fill-color: #31443b !important;
+    box-shadow: none !important;
+}
+div[data-testid="stForm"] button[kind="secondary"]:hover,
+div[data-testid="stForm"] button[kind="secondaryFormSubmit"]:hover,
+div[data-testid="stForm"] button[data-testid="baseButton-secondary"]:hover,
+div[data-testid="stForm"] button[data-testid="stBaseButton-secondary"]:hover {
+    background: rgba(255,255,255,0.98) !important;
+    border-color: rgba(24,37,31,0.16) !important;
+    color: #23352d !important;
+}
+div[data-testid="stForm"] button {
+    height: 46px !important;
+    border-radius: 13px !important;
+    font-weight: 700 !important;
+    font-family: var(--font-sans) !important;
+}
+
+</style>
         {bg_layer}
         """,
         unsafe_allow_html=True,
