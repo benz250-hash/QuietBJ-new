@@ -319,12 +319,12 @@ def render_styles(result_mode: bool) -> None:
         div[data-testid="stButton"] > button[kind="primary"], div[data-testid="stFormSubmitButton"] > button[kind="primary"] {{background:#173a2d !important; border:1px solid #173a2d !important; color:white !important;}}
 
         
-        .suggestion-wrap {margin-top: 10px; border-radius: 16px; overflow: hidden; background: rgba(255,255,255,0.95); border: 1px solid rgba(21,34,26,0.08);}
-        .suggestion-head {padding: 10px 14px 6px; font-size: 12px; color: #65746b; letter-spacing: .04em;}
-        .suggestion-row {padding: 6px 0;}
-        .suggestion-meta {padding: 0 14px 8px; font-size: 12px; color: #6d7a72;}
-        div[data-testid="stButton"] > button[kind="secondary"] {background: rgba(255,255,255,0.94) !important; border: 1px solid rgba(24,37,31,0.10) !important; color: #31443b !important;}
-        div[data-testid="stButton"] > button[kind="primary"] {background:#173a2d !important; border:1px solid #173a2d !important; color:white !important;}
+        .suggestion-wrap {{margin-top: 10px; border-radius: 16px; overflow: hidden; background: rgba(255,255,255,0.95); border: 1px solid rgba(21,34,26,0.08);}}
+        .suggestion-head {{padding: 10px 14px 6px; font-size: 12px; color: #65746b; letter-spacing: .04em;}}
+        .suggestion-row {{padding: 6px 0;}}
+        .suggestion-meta {{padding: 0 14px 8px; font-size: 12px; color: #6d7a72;}}
+        div[data-testid="stButton"] > button[kind="secondary"] {{background: rgba(255,255,255,0.94) !important; border: 1px solid rgba(24,37,31,0.10) !important; color: #31443b !important;}}
+        div[data-testid="stButton"] > button[kind="primary"] {{background:#173a2d !important; border:1px solid #173a2d !important; color:white !important;}}
 .search-footnote {{margin-top:10px; text-align:center; color:{'rgba(255,255,255,0.74)' if not result_mode else '#67746c'}; font-size:12px;}}
         .result-shell-title {{font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:#6f7c74; margin-top:8px; margin-bottom:12px; font-family: var(--font-sans) !important;}}
         .card-title {{font-size:24px; font-weight:700; color:#16241e; margin-bottom:6px; font-family: var(--font-display) !important; letter-spacing:-0.01em;}}
