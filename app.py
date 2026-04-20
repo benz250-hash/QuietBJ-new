@@ -24,19 +24,19 @@ def file_to_base64(path: str | Path) -> str:
 
 def label_score(score: int) -> str:
     if score >= 90:
-        return "非常安静"
+        return "安静度较高"
     if score >= 80:
-        return "较为安静"
+        return "安静度良好"
     if score >= 70:
-        return "中等偏静"
+        return "环境较稳定"
     if score >= 60:
-        return "略受噪音影响"
-    return "噪音偏高"
+        return "略受外部环境影响"
+    return "外部环境影响较明显"
 
 
 def build_summary_line(signals: list[dict[str, Any]]) -> str:
     if not signals:
-        return "当前没有捕捉到足够强的外部噪音暴露，整体更接近中性楼栋。"
+        return "当前没有识别到足够强的外部环境影响线索，整体更接近中性楼栋。"
     ordered = sorted(signals, key=lambda x: int(x.get("penalty", 0)), reverse=True)
     labels = [str(item.get("label", "")).strip() for item in ordered[:2] if str(item.get("label", "")).strip()]
     if len(labels) == 1:
@@ -70,7 +70,7 @@ def parse_geocode_result(query: str, community_repo: CommunityRepository, amap: 
             "far_ratio": "",
             "build_year": "",
             "base_score": DEFAULT_BASE_SCORE,
-            "_match_source": "未命中本地小区库，按标准基准分处理",
+            "_match_source": "未匹配到本地小区样本，当前按标准基准分估算",
             "_match_confidence": "",
             "_query_used": cleaned_query,
         }
@@ -89,7 +89,7 @@ def compute_position_result(zone_options: list[dict[str, Any]], community_row: d
         community_row.get("build_year", ""),
     )
     result["zone_name"] = selected_name
-    result["zone_description"] = zone_row.get("description", "按当前楼栋位置修正")
+    result["zone_description"] = zone_row.get("description", "按当前楼栋位置调整")
     return result
 
 
@@ -102,6 +102,14 @@ def render_styles(result_mode: bool) -> None:
     st.markdown(
         f"""
         <style>
+        :root {
+            --font-display: "Songti SC", "Noto Serif SC", "Source Han Serif SC", serif;
+            --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+        }
+        html, body, [class*="css"], .stApp {
+            font-family: var(--font-sans) !important;
+            color: #17211b;
+        }
         .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stToolbar"], section.main {{
             background: {app_bg} !important;
         }}
@@ -120,13 +128,13 @@ def render_styles(result_mode: bool) -> None:
         }}
         .topbar {{display:flex; justify-content:space-between; align-items:center; padding:16px 0 0; color:white;}}
         .topbar.light {{color:#14211b; padding:18px 0 12px;}}
-        .brand {{font-size:14px; font-weight:600; letter-spacing:.10em; opacity:.36;}}
+        .brand {font-size:14px; font-weight:600; letter-spacing:.10em; opacity:.34; font-family: var(--font-sans) !important;}
         .hero-wrap {{min-height:46vh; display:flex; align-items:flex-start; justify-content:center; padding-top:5vh; text-align:center; color:white;}}
-        .hero-kicker {{font-size:11px; letter-spacing:.24em; text-transform:uppercase; opacity:.86; margin-bottom:12px;}}
-        .hero-title {{font-size:clamp(42px,6vw,80px); font-weight:800; line-height:1.02; margin:0; text-shadow:0 8px 30px rgba(0,0,0,.24);}}
-        .hero-sub {{max-width:760px; margin:14px auto 0; font-size:16px; line-height:1.72; color:rgba(255,255,255,.96);}}
-        .hero-note {{display:inline-block; margin-top:16px; padding:10px 16px; border-radius:999px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.18); color:rgba(255,255,255,.92); font-size:11px; letter-spacing:.04em;}}
-        .compact-title {{font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:#6f7c74; margin:4px 0 10px;}}
+        .hero-kicker {font-size:11px; letter-spacing:.24em; text-transform:uppercase; opacity:.86; margin-bottom:12px; font-family: var(--font-sans) !important;}
+        .hero-title {font-size:clamp(42px,6vw,80px); font-weight:700; line-height:1.02; margin:0; text-shadow:0 8px 30px rgba(0,0,0,.24); font-family: var(--font-display) !important; letter-spacing:-0.02em;}
+        .hero-sub {max-width:760px; margin:14px auto 0; font-size:16px; line-height:1.72; color:rgba(255,255,255,.96); font-family: var(--font-sans) !important;}
+        .hero-note {display:inline-block; margin-top:16px; padding:10px 16px; border-radius:999px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.18); color:rgba(255,255,255,.92); font-size:11px; letter-spacing:.04em; font-family: var(--font-sans) !important;}
+        .compact-title {font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:#6f7c74; margin:4px 0 10px; font-family: var(--font-sans) !important;}
         .result-page-intro {{color:#55635b; font-size:14px; line-height:1.7; margin-top:2px; margin-bottom:10px;}}
 
         div[data-testid="stTextInputRootElement"] input {{
@@ -156,11 +164,12 @@ def render_styles(result_mode: bool) -> None:
         }}
         div[data-testid="stFormSubmitButton"] > button {{height:46px; border-radius:13px; font-weight:700; box-shadow:none !important;}}
         div[data-testid="stFormSubmitButton"] > button[kind="primary"] {{background:#173a2d !important; border:1px solid #173a2d !important; color:white !important;}}
-        div[data-testid="stFormSubmitButton"] > button[kind="secondary"] {{background:rgba(255,255,255,0.92) !important; border:1px solid rgba(24,37,31,0.10) !important; color:#31443b !important;}}
+        div[data-testid="stFormSubmitButton"] > button[kind="secondary"] {background:rgba(255,255,255,0.92) !important; border:1px solid rgba(24,37,31,0.10) !important; color:#31443b !important;}
+        div[data-testid="stButton"] > button[kind="primary"], div[data-testid="stFormSubmitButton"] > button[kind="primary"] {background:#173a2d !important; border:1px solid #173a2d !important; color:white !important;}
 
         .search-footnote {{margin-top:10px; text-align:center; color:{'rgba(255,255,255,0.74)' if not result_mode else '#67746c'}; font-size:12px;}}
-        .result-shell-title {{font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:#6f7c74; margin-top:8px; margin-bottom:12px;}}
-        .card-title {{font-size:24px; font-weight:800; color:#16241e; margin-bottom:6px;}}
+        .result-shell-title {font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:#6f7c74; margin-top:8px; margin-bottom:12px; font-family: var(--font-sans) !important;}
+        .card-title {font-size:24px; font-weight:700; color:#16241e; margin-bottom:6px; font-family: var(--font-display) !important; letter-spacing:-0.01em;}
         .card-sub {{font-size:14px; line-height:1.7; color:#536159; margin-bottom:10px;}}
         .result-divider {{height:12px;}}
         .subtle {{color:#4f5d55; font-size:13px; line-height:1.7;}}
@@ -173,13 +182,13 @@ def render_styles(result_mode: bool) -> None:
             padding: 8px 10px !important;
         }}
         .overview-kicker {{font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:#748178;}}
-        .overview-name {{font-size:38px; line-height:1.08; font-weight:800; color:#15231d; margin:8px 0;}}
+        .overview-name {font-size:38px; line-height:1.08; font-weight:700; color:#15231d; margin:8px 0; font-family: var(--font-display) !important; letter-spacing:-0.02em;}
         .overview-line {{font-size:16px; line-height:1.7; color:#2f4138;}}
         .pill-row {{display:flex; flex-wrap:wrap; gap:10px; margin-top:14px;}}
         .pill {{padding:8px 12px; border-radius:999px; background:#eef3ef; border:1px solid #dde7e1; color:#264335; font-size:13px;}}
         .score-panel {{background:linear-gradient(180deg, #163a2c 0%, #1b583d 100%); color:white; border-radius:24px; padding:26px; box-shadow:0 18px 42px rgba(21,58,43,0.24); min-height:100%;}}
         .score-kicker {{opacity:.78; letter-spacing:.16em; text-transform:uppercase; font-size:12px;}}
-        .score-number {{font-size:88px; line-height:1; font-weight:800; margin:10px 0 6px;}}
+        .score-number {font-size:88px; line-height:1; font-weight:800; margin:10px 0 6px; font-family: var(--font-sans) !important;}
         .metric-grid {{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-top:16px;}}
         .metric-box {{background:#f5f8f5; border:1px solid #e5ece7; border-radius:18px; padding:14px;}}
         .metric-label {{font-size:12px; color:#728077; margin-bottom:4px;}}
@@ -220,7 +229,7 @@ def render_hero() -> None:
                 <div class="hero-kicker">BEIJING RESIDENTIAL CALM INDEX</div>
                 <h1 class="hero-title">安宁北京</h1>
                 <div class="hero-sub">楼栋级住宅环境评估引擎。识别小区，定位楼栋，测算道路、商业、学校、医院与轨道暴露。</div>
-                <div class="hero-note">标准基准分 · 楼栋位置修正 · 外部暴露惩罚</div>
+                <div class="hero-note">标准基准分 · 楼栋位置调整 · 外部环境影响</div>
             </div>
         </div>
         """,
@@ -230,7 +239,7 @@ def render_hero() -> None:
 
 def render_search(compact: bool = False) -> tuple[str, bool, bool]:
     if compact:
-        st.markdown('<div class="compact-title">Search Again</div>', unsafe_allow_html=True)
+        st.markdown('<div class="compact-title">New Search</div>', unsafe_allow_html=True)
         st.markdown('<div class="result-page-intro">继续输入新的北京小区或楼栋地址，系统会重新定位楼栋并更新评估结果。</div>', unsafe_allow_html=True)
         layout = [5.5, 1.25, 1.0]
     else:
@@ -274,10 +283,10 @@ def render_overview_card(query: str, community_row: dict[str, Any], result: dict
                 unsafe_allow_html=True,
             )
             metric_html = [
-                ("标准基准", str(DEFAULT_BASE_SCORE), "统一起点评估"),
-                ("楼栋修正", f"{result['zone_adjust']:+d}", "来自楼栋位置"),
-                ("建筑加分", f"{result['build_bonus']:+d}", "来自楼龄代理值"),
-                ("外部惩罚", f"-{result['noise_penalty']}", "来自道路/商业/学校/轨道"),
+                ("标准基准分", str(DEFAULT_BASE_SCORE), "统一基准评估"),
+                ("楼栋位置调整", f"{result['zone_adjust']:+d}", "来自楼栋位置"),
+                ("建筑条件调整", f"{result['build_bonus']:+d}", "来自楼龄代理值"),
+                ("外部环境影响", f"{result['noise_penalty']}", "来自道路 / 商业 / 学校 / 轨道"),
             ]
             st.markdown(
                 '<div class="metric-grid">' + ''.join(
@@ -292,7 +301,7 @@ def render_overview_card(query: str, community_row: dict[str, Any], result: dict
                     <div class="score-kicker">Quiet Score</div>
                     <div class="score-number">{result['final_score']}</div>
                     <h3>{label_score(result['final_score'])}</h3>
-                    <div style="line-height:1.75; font-size:14px; opacity:0.96;">系统按楼栋位置、道路距离、商业暴露、学校医院和轨道交通进行估算，用于快速判断这套房是否值得继续看。</div>
+                    <div style="line-height:1.75; font-size:14px; opacity:0.96;">系统基于楼栋位置、道路距离、商业暴露、学校医院和轨道交通进行估算，用于快速判断这套房是否值得继续看。</div>
                 </div>
                 ''',
                 unsafe_allow_html=True,
@@ -302,24 +311,24 @@ def render_overview_card(query: str, community_row: dict[str, Any], result: dict
 def render_penalty_card(noise_summary: dict[str, Any]) -> None:
     signals = noise_summary.get("signals", [])
     with st.container(border=True):
-        st.markdown('<div class="card-title">扣分来源</div>', unsafe_allow_html=True)
-        st.markdown('<div class="card-sub">先看拖分项，再决定要不要继续实勘。这一层只展示真正影响当前楼栋体感的主要外部因素。</div>', unsafe_allow_html=True)
+        st.markdown('<div class="card-title">影响来源</div>', unsafe_allow_html=True)
+        st.markdown('<div class="card-sub">先看主要影响项，再决定要不要继续实勘。这一层只展示对当前楼栋体感最重要的外部环境因素。</div>', unsafe_allow_html=True)
         if not signals:
-            st.info("当前没有识别到显著的外部噪音暴露，系统没有形成有效扣分。")
+            st.info("当前没有识别到明显的外部环境影响，系统没有形成显著的影响值。")
         else:
             rows = []
             for sig in sorted(signals, key=lambda x: int(x.get("penalty", 0)), reverse=True):
                 rows.append(
-                    f'<div class="deduct-row"><div><div class="deduct-title">{sig.get("label", "")}</div><div class="deduct-detail">{sig.get("detail", "")}</div></div><div class="deduct-right">{sig.get("distance_m", "-")}m ｜ -{int(sig.get("penalty", 0))}</div></div>'
+                    f'<div class="deduct-row"><div><div class="deduct-title">{sig.get("label", "")}</div><div class="deduct-detail">{sig.get("detail", "")}</div></div><div class="deduct-right">{sig.get("distance_m", "-")}m ｜ 影响值 {int(sig.get("penalty", 0))}</div></div>'
                 )
             st.markdown(''.join(rows), unsafe_allow_html=True)
-            st.markdown(f"<div class='subtle' style='margin-top:10px;'>外部暴露总惩罚：<strong style='color:#173a2d;'>-{int(noise_summary.get('total_penalty', 0))}</strong></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='subtle' style='margin-top:10px;'>总体环境影响值：<strong style='color:#173a2d;'>{int(noise_summary.get('total_penalty', 0))}</strong></div>", unsafe_allow_html=True)
 
 
 def render_position_card(result: dict[str, Any], zone_labels: list[str], zone_key: str) -> None:
     with st.container(border=True):
-        st.markdown('<div class="card-title">楼栋位置修正</div>', unsafe_allow_html=True)
-        st.markdown('<div class="card-sub">这里不是让用户调后台参数，而是把楼栋放回真实位置语境里：临街、中央区、内排安静区，体感差异会很明显。</div>', unsafe_allow_html=True)
+        st.markdown('<div class="card-title">楼栋位置调整</div>', unsafe_allow_html=True)
+        st.markdown('<div class="card-sub">该部分用于模拟不同楼栋位置语境下的环境差异，例如临街、中央区或内排安静区。</div>', unsafe_allow_html=True)
         st.selectbox("楼栋位置", zone_labels, key=zone_key, label_visibility="collapsed")
         c1, c2, c3, c4 = st.columns(4)
         items = [
@@ -334,11 +343,11 @@ def render_position_card(result: dict[str, Any], zone_labels: list[str], zone_ke
                     f'<div class="metric-box"><div class="metric-label">{title}</div><div class="metric-value">{value}</div><div class="metric-note">{note}</div></div>',
                     unsafe_allow_html=True,
                 )
-        st.markdown(f"<div class='subtle' style='margin-top:12px;'>位置解释：{result['zone_description']}。</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='subtle' style='margin-top:12px;'>位置说明：{result['zone_description']}。</div>", unsafe_allow_html=True)
 
 
 def render_debug_card(geocode_used: dict[str, Any] | None, building_location_text: str, community_row: dict[str, Any], tip_list: list[dict[str, Any]], regeo: dict[str, Any] | None) -> None:
-    with st.expander("高德识别详情", expanded=False):
+    with st.expander("地址识别核查", expanded=False):
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("**楼栋点位**")
@@ -434,7 +443,7 @@ def main() -> None:
 
     if result_mode:
         st.markdown('<div class="plain-band">', unsafe_allow_html=True)
-    st.markdown('<div class="result-shell-title">Residential Result</div>', unsafe_allow_html=True)
+    st.markdown('<div class="result-shell-title">Residential Assessment</div>', unsafe_allow_html=True)
     render_overview_card(query, community_row, result, noise_summary.get("signals", []))
     st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
     render_penalty_card(noise_summary)
