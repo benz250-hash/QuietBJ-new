@@ -254,10 +254,11 @@ div[data-testid="stForm"] button {{
 }}
 
 </style>
-        {bg_layer}
         """,
         unsafe_allow_html=True,
     )
+    if bg_layer:
+        st.markdown(bg_layer, unsafe_allow_html=True)
 
 
 # ---------- UI blocks ----------
@@ -296,11 +297,10 @@ def render_search(compact: bool = False) -> tuple[str, bool, bool]:
             placeholder="输入北京小区或楼栋地址，例如：新龙城6号楼 / 花家地西里2号楼",
             label_visibility="collapsed",
         )
-        a, b, c = st.columns(layout)
-        with b:
+        _, center, _ = st.columns([1.4, 1.2, 1.4])
+        with center:
             submit = st.form_submit_button("开始查询", type="primary", use_container_width=True)
-        with c:
-            clear = st.form_submit_button("清空", use_container_width=True)
+        clear = False
     st.markdown(
         f'<div class="search-footnote">建议输入：小区名 + 楼号。系统会先识别小区，再围绕更接近楼栋的坐标测算外部噪音暴露。</div>',
         unsafe_allow_html=True,
