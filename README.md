@@ -1,33 +1,33 @@
-# QuietBJ
+# QuietBJ 模块化版本（扁平结构）
 
-这是修好的扁平版项目，适合直接上传到 GitHub 和 Streamlit Community Cloud。
+这是一个面向北京住宅噪音评分的 Streamlit 原型，采用：
 
-## 这版修了什么
-- 背景图改成更稳的固定背景层，不再使用 `.stApp::before` / `.stApp::after` 伪元素。
-- 保留 HowLoud 风格的中间搜索框布局。
-- 保留本地样本库 + 高德在线估算兜底。
-- `新龙城` 已包含在样本库中。
-- 所有文件都在同一层，解压后可直接上传。
+- 小区基础分
+- 分区修正
+- 高德地址归一化（输入提示 / 地理编码 / 逆地理编码）
 
-## 文件
-- `app.py`
-- `background.jpg`
-- `communities_sample.csv`
-- `requirements.txt`
-- `README.md`
-- `SECRETS_EXAMPLE.toml`
+## 文件说明
 
-## 本地运行
+- `app.py`：页面与交互
+- `community_engine.py`：小区基础分引擎
+- `zone_engine.py`：分区修正引擎
+- `building_engine.py`：楼栋级占位引擎
+- `score_pipeline.py`：总调度器
+- `amap_provider.py`：高德接口封装
+- `community_repository.py`：小区数据读取与匹配
+- `zone_repository.py`：分区数据读取
+- `communities.csv`：小区主表
+- `community_zones.csv`：小区分区修正表
+
+## 运行
+
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Streamlit Cloud Secrets
-```toml
-AMAP_API_KEY = "你的高德 Key"
-```
+## 高德 Key
 
-## 说明
-- 当前仍然是地址级 / 小区级估算，不是官方实测分贝。
-- 若要进一步提高准确度，下一步建议做楼栋级修正。
+本地可创建 `.streamlit/secrets.toml`，内容参考 `SECRETS_EXAMPLE.toml`。
+
+部署到 Streamlit Cloud 时，把同样内容粘贴到 Secrets 面板即可。
