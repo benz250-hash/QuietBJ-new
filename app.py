@@ -14,7 +14,7 @@ from score_engine import ScoreEngine
 from text_match import strip_unit_details
 from zone_repository import ZoneRepository
 
-st.set_page_config(page_title="QuietBJ｜安宁的北京", page_icon="🔇", layout="wide")
+st.set_page_config(page_title="QuietBJ｜安宁北京", page_icon="🔇", layout="wide")
 
 
 def file_to_base64(path: str | Path) -> str:
@@ -28,18 +28,17 @@ def render_styles() -> None:
         <style>
         .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stToolbar"], section.main {{ background: transparent !important; }}
         .block-container {{max-width:100% !important; padding-top:0 !important; padding-left: 2rem !important; padding-right: 2rem !important;}}
-        .bg-layer {{position: fixed; inset: 0; z-index: -20; pointer-events:none; background-image: linear-gradient(180deg, rgba(8,15,12,0.38), rgba(8,15,12,0.52)), url("data:image/jpeg;base64,{bg_base64}"); background-size: cover; background-position: center center; background-repeat:no-repeat;}}
-        .topbar {{display:flex; justify-content:space-between; align-items:center; padding:10px 0 0; color:#fff;}}
+        .bg-layer {{position: fixed; inset: 0; z-index: -20; pointer-events:none; background-image: linear-gradient(180deg, rgba(8,15,12,0.34), rgba(8,15,12,0.56)), url("data:image/jpeg;base64,{bg_base64}"); background-size: cover; background-position: center center; background-repeat:no-repeat;}}
+        .topbar {{display:flex; justify-content:space-between; align-items:center; padding:12px 0 0; color:#fff;}}
         .brand {{font-size:26px; font-weight:800; letter-spacing:0.04em;}}
-        .topbar-note {{font-size:13px; letter-spacing:0.08em; text-transform:uppercase; opacity:0.88;}}
-        .hero {{min-height: 26vh; display:flex; align-items:flex-start; justify-content:center; padding-top:2.4vh; margin-bottom: 4px;}}
-        .hero-box {{width:min(1100px,96%); text-align:center; color:#fff; margin:0 auto;}}
-        .hero-kicker {{font-size:13px; letter-spacing:0.22em; text-transform:uppercase; opacity:0.90; margin-bottom:10px;}}
-        .hero-title {{font-size: clamp(40px, 6vw, 78px); font-weight: 800; line-height: 1.02; margin:0; text-shadow: 0 8px 32px rgba(0,0,0,0.22);}}
-        .hero-sub {{font-size:17px; line-height:1.8; max-width:960px; margin:14px auto 0; color:rgba(255,255,255,0.96);}}
-        .hero-sub strong {{color:#ffffff;}}
-        .hero-note {{display:inline-block; margin-top:14px; padding:10px 14px; border-radius:999px; background:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.18); color:#fff; font-size:13px; letter-spacing:0.02em;}}
-        .glass-card {{background: rgba(255,255,255,0.88); backdrop-filter: blur(12px); border:1px solid rgba(255,255,255,0.42); border-radius:24px; box-shadow:0 24px 80px rgba(0,0,0,0.18); padding:16px 16px 8px; max-width: 980px; margin: 0 auto;}}
+        .hero {{min-height: 20vh; display:flex; align-items:flex-start; justify-content:center; padding-top:1.8vh; margin-bottom: 0;}}
+        .hero-box {{width:min(960px,96%); text-align:center; color:#fff; margin:0 auto;}}
+        .hero-kicker {{font-size:12px; letter-spacing:0.24em; text-transform:uppercase; opacity:0.88; margin-bottom:10px;}}
+        .hero-title {{font-size: clamp(42px, 6vw, 78px); font-weight: 800; line-height: 1.02; margin:0; text-shadow: 0 8px 32px rgba(0,0,0,0.24);}}
+        .hero-sub {{font-size:16px; line-height:1.8; max-width:860px; margin:14px auto 0; color:rgba(255,255,255,0.95);}}
+        .hero-note {{display:inline-block; margin-top:14px; padding:9px 15px; border-radius:999px; background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.20); color:#fff; font-size:12px; letter-spacing:0.03em;}}
+        .search-wrap {{margin-top: 14px; margin-bottom: 14px;}}
+        .glass-card {{background: rgba(255,255,255,0.88); backdrop-filter: blur(14px); border:1px solid rgba(255,255,255,0.42); border-radius:24px; box-shadow:0 24px 80px rgba(0,0,0,0.18); padding:14px 14px 6px; max-width: 860px; margin: 0 auto;}}
         .section-card {{background: rgba(255,255,255,0.94); border:1px solid rgba(20,36,28,0.08); border-radius:22px; padding:22px 22px; box-shadow:0 12px 40px rgba(26,39,31,0.08);}}
         .score-shell {{background: linear-gradient(180deg, rgba(19,60,42,0.96), rgba(23,81,58,0.96)); color:#fff; border-radius:22px; padding:28px; box-shadow:0 18px 45px rgba(14,44,31,0.25);}}
         .score-number {{font-size:84px; line-height:1; font-weight:800; margin:10px 0 6px;}}
@@ -49,9 +48,14 @@ def render_styles() -> None:
         .signal-row {{display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px dashed #dfe7e2;}}
         .tiny-note {{font-size:13px; color:#778178;}}
         .anchor {{position:relative; top:-90px; visibility:hidden;}}
-        div[data-testid="stTextInputRootElement"] input {{border-radius:14px !important; height:54px !important; font-size:17px !important;}}
+        div[data-testid="stTextInputRootElement"] input {{border-radius:16px !important; height:56px !important; font-size:18px !important;}}
+        div[data-testid="stTextInputRootElement"] label {{font-size:13px !important; color: rgba(23,30,28,0.72) !important;}}
         div[data-testid="stSelectbox"] > div {{border-radius:14px !important;}}
-        @media (max-width: 900px) {{ .block-container {{padding-left: 1rem !important; padding-right: 1rem !important;}} }}
+        div.stButton > button {{height:52px; border-radius:14px; font-weight:700; box-shadow:none !important;}}
+        div.stButton > button[kind="primary"] {{background:#173d2f !important; border:1px solid #173d2f !important; color:white !important;}}
+        div.stButton > button[kind="secondary"] {{background:rgba(255,255,255,0.92) !important; border:1px solid #d7ddd9 !important; color:#294236 !important;}}
+        .form-footnote {{font-size:13px; color:#68746d; text-align:left; padding:2px 4px 8px;}}
+        @media (max-width: 900px) {{ .block-container {{padding-left: 1rem !important; padding-right: 1rem !important;}} .hero-sub {{font-size:15px;}} }}
         </style>
         <div class="bg-layer"></div>
         """,
@@ -60,8 +64,20 @@ def render_styles() -> None:
 
 
 def render_header() -> None:
-    st.markdown('<div class="topbar"><div class="brand">QuietBJ</div><div class="topbar-note">Residential Environment Intelligence</div></div>', unsafe_allow_html=True)
-    st.markdown('<div class="hero"><div class="hero-box"><div class="hero-kicker">BEIJING RESIDENTIAL CALM INDEX</div><h1 class="hero-title">安宁的北京</h1><div class="hero-sub">这不是一个简单的地图搜索工具，而是一套面向居住决策的<strong>楼栋级环境评估引擎</strong>。系统会先识别小区，再保留完整楼栋地址向高德获取更接近楼栋的坐标，随后测算最近高速、主干路、学校、医院、底商、餐饮与轨道交通的距离，并按权重形成分数。</div><div class="hero-note">默认基础分 75 + 分区修正 + 建筑加分 − 周边噪音惩罚</div></div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="topbar"><div class="brand">QuietBJ</div><div></div></div>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="hero">
+            <div class="hero-box">
+                <div class="hero-kicker">BEIJING RESIDENTIAL CALM INDEX</div>
+                <h1 class="hero-title">安宁北京</h1>
+                <div class="hero-sub">楼栋级住宅环境评估引擎。识别小区，定位楼栋，测算道路、商业、学校、医院与轨道暴露。</div>
+                <div class="hero-note">默认基准 75 · 分区修正 · 建筑加分 · 周边噪音惩罚</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def parse_location_text(text: str | None) -> tuple[float, float] | None:
@@ -97,7 +113,7 @@ def main() -> None:
 
     left, center, right = st.columns([1.1, 4.8, 1.1])
     with center:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.markdown('<div class="search-wrap"><div class="glass-card">', unsafe_allow_html=True)
         with st.form('search_form', clear_on_submit=False):
             query = st.text_input('请输入北京小区或详细楼栋地址', placeholder='例如：新龙城6号楼 / 花家地西里2号楼')
             c1, c2 = st.columns([1.2, 1.2])
@@ -105,13 +121,12 @@ def main() -> None:
                 submitted = st.form_submit_button('开始查询', type='primary', use_container_width=True)
             with c2:
                 clear = st.form_submit_button('清空', use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<div class="form-footnote">建议输入：小区名 + 楼号。系统会先识别小区，再围绕更接近楼栋的坐标测算外部噪音暴露。</div></div></div>', unsafe_allow_html=True)
 
     if clear:
         st.rerun()
 
     if not submitted or not query.strip():
-        st.info('输入一个楼栋级地址后，系统会先命中小区，再围绕完整楼栋地址测算更接近真实住感的外部噪音暴露。')
         return
 
     cleaned_query = strip_unit_details(query)
