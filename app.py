@@ -497,18 +497,13 @@ def inject_css() -> None:
             box-shadow: 0 10px 26px rgba(0,0,0,0.16);
         }}
 
-        .hero {{
-            min-height: calc(100vh - 92px);
-            display: flex;
-            align-items: flex-start;
-            justify-content: center;
-            padding: 18px 0 0 0;
+        .search-top-space {{
+            height: 68px;
         }}
 
         .search-card {{
-            width: min(980px, 90vw);
-            margin: 0 auto;
-            transform: translateY(-8px);
+            width: 100%;
+            margin: 0 auto 14px auto;
             background: rgba(255,255,255,0.74);
             border: 1px solid rgba(255,255,255,0.28);
             backdrop-filter: blur(16px);
@@ -535,10 +530,15 @@ def inject_css() -> None:
             margin-bottom: 22px;
         }}
 
+        .search-shell {{
+            width: 100%;
+        }}
+
         .search-shell form {{
             border: none !important;
             background: transparent !important;
             padding: 0 !important;
+            margin-top: 0 !important;
         }}
 
         .search-shell [data-testid="stTextInput"] label {{
@@ -678,8 +678,8 @@ def inject_css() -> None:
             .page {{ padding: 0 16px 34px 16px; }}
             .nav {{ padding: 8px 12px; }}
             .nav-links {{ display: none; }}
-            .hero {{ min-height: calc(100vh - 66px); align-items: flex-start; padding: 14px 0 0 0; }}
-            .search-card {{ width: 94vw; padding: 24px 14px 20px 14px; border-radius: 20px; }}
+            .search-top-space {{ height: 34px; }}
+            .search-card {{ width: 100%; padding: 24px 14px 20px 14px; border-radius: 20px; margin-bottom: 12px; }}
             .search-title {{ font-size: 2.15rem; }}
             .search-copy {{ font-size: 0.95rem; margin-bottom: 16px; }}
             .search-shell [data-testid="stTextInput"] input {{ min-height: 58px !important; font-size: 1.02rem !important; }}
@@ -715,37 +715,39 @@ def render_nav() -> None:
 
 
 def render_hero(df: pd.DataFrame) -> tuple[dict[str, Any] | None, str | None]:
-    st.markdown('<div class="page"><div class="hero">', unsafe_allow_html=True)
-    st.markdown(
-        """
-        <div class="search-card">
-          <div class="search-title">搜索静噪分™</div>
-          <div class="search-copy">输入北京小区名称或街道地址。系统优先匹配本地样本库；未命中时，若已配置高德 Key，将自动进行在线估算。</div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="search-top-space"></div>', unsafe_allow_html=True)
 
     result = None
     status = None
     if "query" not in st.session_state:
         st.session_state.query = ""
 
-    st.markdown('<div class="search-shell">', unsafe_allow_html=True)
-    with st.form("hero_search", clear_on_submit=False):
-        c1, c2, c3 = st.columns([7.0, 1.25, 1.45])
-        with c1:
-            query = st.text_input(
-                "搜索北京小区或地址",
-                value=st.session_state.query,
-                placeholder="请输入北京小区名、楼盘名或街道地址",
-                label_visibility="collapsed",
-            )
-        with c2:
-            go_clicked = st.form_submit_button("开始查询", type="primary", use_container_width=True)
-        with c3:
-            reset_clicked = st.form_submit_button("重新输入", use_container_width=True)
-
-    st.markdown('</div></div></div></div>', unsafe_allow_html=True)
+    _, center, _ = st.columns([1.05, 10.9, 1.05])
+    with center:
+        st.markdown(
+            """
+            <div class="search-card">
+              <div class="search-title">搜索静噪分™</div>
+              <div class="search-copy">输入北京小区名称或街道地址。系统优先匹配本地样本库；未命中时，若已配置高德 Key，将自动进行在线估算。</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown('<div class="search-shell">', unsafe_allow_html=True)
+        with st.form("hero_search", clear_on_submit=False):
+            c1, c2, c3 = st.columns([7.0, 1.25, 1.45])
+            with c1:
+                query = st.text_input(
+                    "搜索北京小区或地址",
+                    value=st.session_state.query,
+                    placeholder="请输入北京小区名、楼盘名或街道地址",
+                    label_visibility="collapsed",
+                )
+            with c2:
+                go_clicked = st.form_submit_button("开始查询", type="primary", use_container_width=True)
+            with c3:
+                reset_clicked = st.form_submit_button("重新输入", use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     if reset_clicked:
         st.session_state.query = ""
@@ -769,8 +771,6 @@ def render_hero(df: pd.DataFrame) -> tuple[dict[str, Any] | None, str | None]:
                 else:
                     status = "not_found"
     return result, status
-
-
 def render_result(result: dict[str, Any]) -> None:
     score_info = calculate_score(result)
     reasons = []
