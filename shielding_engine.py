@@ -26,6 +26,50 @@ def _norm_text(value: str) -> str:
     return "".join(ch for ch in str(value or "").strip().lower() if ch not in " \t\r\n-—_·•,，。/｜|（）()【】[]{}<>:：")
 
 
+
+
+def _community_aliases(name: str) -> list[str]:
+    raw = str(name or "").strip()
+    if not raw:
+        return []
+    base = _norm_text(raw)
+    aliases = {base}
+    # 常见后缀弱化，解决“国奥村” vs “国奥村西区”
+    for suffix in ["东区", "西区", "南区", "北区", "一区", "二区", "三区", "四区", "五区", "六区"]:
+        if raw.endswith(suffix):
+            aliases.add(_norm_text(raw[: -len(suffix)]))
+    for suffix in ["小区", "社区", "家园", "公寓", "花园", "华庭", "嘉园", "名苑", "苑"]:
+        if raw.endswith(suffix):
+            aliases.add(_norm_text(raw[: -len(suffix)]))
+    # 兼容“国奥村西区16号楼”这类场景的上游截断结果
+    for suffix in ["东区", "西区", "南区", "北区"]:
+        aliases.add(base.replace(_norm_text(suffix), ""))
+    return [x for x in aliases if x]
+
+
+def _find_best_cache_key(cache: dict[str, Any], community_name: str) -> str | None:
+    aliases = set(_community_aliases(community_name))
+    if not aliases:
+        return None
+
+    best_key = None
+    best_score = -1
+    for key in cache.keys():
+        key_aliases = set(_community_aliases(key))
+        score = 0
+        if aliases & key_aliases:
+            score = 100
+        else:
+            for a in aliases:
+                for b in key_aliases:
+                    if a and b and (a in b or b in a):
+                        score = max(score, min(len(a), len(b)))
+        if score > best_score:
+            best_score = score
+            best_key = key
+    return best_key if best_score > 0 else None
+
+
 def load_building_cache(path: str | Path = CACHE_FILE) -> dict[str, Any]:
     file_path = Path(path)
     if not file_path.exists():
@@ -45,13 +89,10 @@ def save_building_cache(data: dict[str, Any], path: str | Path = CACHE_FILE) -> 
 
 
 def get_cached_buildings(cache: dict[str, Any], community_name: str) -> list[dict[str, Any]]:
-    target = _norm_text(community_name)
-    if not target:
+    best_key = _find_best_cache_key(cache, community_name)
+    if not best_key:
         return []
-    for key, value in cache.items():
-        if _norm_text(key) == target:
-            return list(value.get("buildings", []))
-    return []
+    return list(cache.get(best_key, {}).get("buildings", []))
 
 
 def upsert_community_buildings(
@@ -62,11 +103,50 @@ def upsert_community_buildings(
     updated_at: str = "",
 ) -> dict[str, Any]:
     cache = dict(cache)
-    cache[community_name] = {
+    best_key = _find_best_cache_key(cache, community_name)
+    save_key = best_key or community_name
+    cache[save_key] = {
         "source": source,
         "updated_at": updated_at,
         "buildings": buildings,
     }
+    return cache
+
+
+def upsert_building_point(
+    cache: dict[str, Any],
+    community_name: str,
+    building: dict[str, Any],
+    source: str = "query_trace",
+    updated_at: str = "",
+) -> dict[str, Any]:
+    cache = dict(cache)
+    best_key = _find_best_cache_key(cache, community_name)
+    save_key = best_key or community_name
+    entry = dict(cache.get(save_key, {}))
+    buildings = list(entry.get("buildings", []))
+
+    target_token = _norm_text(str(building.get("building_token", "")).strip())
+    target_name = _norm_text(str(building.get("name", "")).strip())
+    replaced = False
+    for idx, item in enumerate(buildings):
+        item_token = _norm_text(str(item.get("building_token", "")).strip())
+        item_name = _norm_text(str(item.get("name", "")).strip())
+        if target_token and item_token == target_token:
+            buildings[idx] = {**item, **building}
+            replaced = True
+            break
+        if target_name and item_name == target_name:
+            buildings[idx] = {**item, **building}
+            replaced = True
+            break
+    if not replaced:
+        buildings.append(building)
+
+    entry["source"] = entry.get("source", source) or source
+    entry["updated_at"] = updated_at or entry.get("updated_at", "")
+    entry["buildings"] = buildings
+    cache[save_key] = entry
     return cache
 
 

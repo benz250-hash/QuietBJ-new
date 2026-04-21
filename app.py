@@ -13,7 +13,7 @@ from community_repository import CommunityRepository
 from config import BACKGROUND_FILE, COMMUNITIES_FILE, COMMUNITY_ZONES_FILE, DEFAULT_BASE_SCORE, get_amap_api_key
 from noise_point_engine import NoisePointEngine
 from score_engine import ScoreEngine
-from shielding_engine import apply_shielding_to_road_impact, get_cached_buildings, infer_shielding, load_building_cache
+from shielding_engine import apply_shielding_to_road_impact, get_cached_buildings, infer_shielding, load_building_cache, save_building_cache, upsert_building_point
 from text_match import strip_unit_details
 from zone_repository import ZoneRepository
 
@@ -297,6 +297,34 @@ def apply_building_override(community_row: dict[str, Any], query: str, overrides
     }
     row["_map_label"] = map_labels.get(row["_override_zone_type"], row.get("_map_label", "目标楼栋"))
     return row
+
+
+def update_building_cache_for_current_result(
+    community_row: dict[str, Any],
+    building_location_text: str,
+    cache_path: str | Path = COMMUNITY_BUILDING_CACHE_FILE,
+) -> None:
+    detail_token = str(community_row.get("_detail_token", "")).strip()
+    community_name = str(community_row.get("community_name", "")).strip()
+    point = parse_location_text(building_location_text)
+    if not detail_token or not community_name or not point:
+        return
+
+    cache = load_building_cache(cache_path)
+    display_name = str(community_row.get("_display_name", "")).strip() or f"{community_name}{detail_token}"
+    building = {
+        "name": display_name,
+        "building_token": detail_token,
+        "lon": point[0],
+        "lat": point[1],
+    }
+    cache = upsert_building_point(
+        cache=cache,
+        community_name=community_name,
+        building=building,
+        source="query_trace",
+    )
+    save_building_cache(cache, cache_path)
 
 
 def normalize_match_text(value: str) -> str:
@@ -1073,6 +1101,7 @@ def main() -> None:
 
     community_row, tip_list, regeo, building_location_text, geocode_used = parse_geocode_result(query, community_repo, amap)
     community_row = apply_building_override(community_row, query, building_overrides)
+    update_building_cache_for_current_result(community_row, building_location_text)
     poi_results: dict[str, list[dict[str, Any]]] = {}
     if amap.enabled() and building_location_text:
         poi_results = {
