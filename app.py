@@ -44,6 +44,185 @@ def build_summary_line(signals: list[dict[str, Any]]) -> str:
     return f"该楼栋当前主要受{labels[0]}与{labels[1]}影响。"
 
 
+def parse_location_text(location_text: str) -> tuple[float, float] | None:
+    raw = str(location_text or "").strip()
+    if not raw or "," not in raw:
+        return None
+    try:
+        lng_text, lat_text = raw.split(",", 1)
+        return float(lng_text), float(lat_text)
+    except Exception:
+        return None
+
+
+def build_map_points(regeo: dict[str, Any] | None, poi_results: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    points: list[dict[str, Any]] = []
+
+    roads = list((regeo or {}).get("roads", []) or [])
+    for road in roads[:8]:
+        parsed = parse_location_text(str(road.get("location", "")).strip())
+        if not parsed:
+            continue
+        lng, lat = parsed
+        name = str(road.get("name", "")).strip() or "道路"
+        strong = any(token in name for token in ["高速", "快速", "环路", "主路", "高架"])
+        points.append(
+            {
+                "lng": lng,
+                "lat": lat,
+                "name": name,
+                "category": "道路",
+                "weight": 1.0 if strong else 0.58,
+                "radius": 92 if strong else 72,
+                "color": [227, 98, 72] if strong else [243, 167, 82],
+            }
+        )
+
+    category_meta = {
+        "rail": ("轨道", [101, 126, 214], 0.82, 84, 5),
+        "school": ("学校", [106, 188, 166], 0.42, 68, 4),
+        "hospital": ("医院", [156, 129, 196], 0.28, 66, 4),
+        "commercial": ("商业", [237, 191, 73], 0.34, 66, 4),
+        "restaurant": ("餐饮", [222, 143, 90], 0.34, 66, 4),
+    }
+    for key, (label, color, weight, radius, limit) in category_meta.items():
+        for item in list(poi_results.get(key, []) or [])[:limit]:
+            parsed = parse_location_text(str(item.get("location", "")).strip())
+            if not parsed:
+                continue
+            lng, lat = parsed
+            points.append(
+                {
+                    "lng": lng,
+                    "lat": lat,
+                    "name": str(item.get("name", "")).strip() or label,
+                    "category": label,
+                    "weight": weight,
+                    "radius": radius,
+                    "color": color,
+                }
+            )
+    return points
+
+
+def render_map_card(building_location_text: str, geocode_used: dict[str, Any] | None, regeo: dict[str, Any] | None, poi_results: dict[str, list[dict[str, Any]]]) -> None:
+    with st.container(border=True):
+        st.markdown('<div class="card-title">环境地图</div>', unsafe_allow_html=True)
+        st.markdown('<div class="card-sub">先给你一个地图上的楼栋定位，再叠加道路、轨道和周边生活源形成的环境影响热层。它不是官方分贝图，而是帮助你更直观看楼栋暴露位置。</div>', unsafe_allow_html=True)
+
+        center = parse_location_text(building_location_text)
+        if not center:
+            st.info("当前没有拿到可用的楼栋坐标，地图暂时无法显示。")
+            return
+
+        lng, lat = center
+        address_text = str((geocode_used or {}).get("formatted_address", "")).strip() or "—"
+        st.markdown(f'<div class="subtle" style="margin-bottom:10px;">地图定位：{address_text}</div>', unsafe_allow_html=True)
+
+        source_points = build_map_points(regeo, poi_results)
+        legend_items = []
+        if any(p["category"] == "道路" for p in source_points):
+            legend_items.append('<span class="pill">道路热层</span>')
+        if any(p["category"] == "轨道" for p in source_points):
+            legend_items.append('<span class="pill">轨道</span>')
+        if any(p["category"] == "学校" for p in source_points):
+            legend_items.append('<span class="pill">学校</span>')
+        if any(p["category"] == "医院" for p in source_points):
+            legend_items.append('<span class="pill">医院</span>')
+        if any(p["category"] in {"商业", "餐饮"} for p in source_points):
+            legend_items.append('<span class="pill">生活源</span>')
+        if legend_items:
+            st.markdown('<div class="pill-row" style="margin-top:0;margin-bottom:12px;">' + ''.join(legend_items) + '</div>', unsafe_allow_html=True)
+
+        try:
+            import pydeck as pdk
+
+            heat_data = [
+                {"position": [p["lng"], p["lat"]], "weight": p["weight"], "name": p["name"], "category": p["category"]}
+                for p in source_points
+            ]
+            scatter_data = [
+                {"lng": p["lng"], "lat": p["lat"], "name": p["name"], "category": p["category"], "radius": p["radius"], "color": p["color"]}
+                for p in source_points
+            ]
+            home_data = [{"lng": lng, "lat": lat, "name": "目标楼栋", "category": "楼栋定位"}]
+
+            layers = []
+            if heat_data:
+                layers.append(
+                    pdk.Layer(
+                        "HeatmapLayer",
+                        data=heat_data,
+                        get_position="position",
+                        get_weight="weight",
+                        radiusPixels=52,
+                        intensity=1.0,
+                        threshold=0.08,
+                        opacity=0.6,
+                    )
+                )
+                layers.append(
+                    pdk.Layer(
+                        "ScatterplotLayer",
+                        data=scatter_data,
+                        get_position='[lng, lat]',
+                        get_fill_color='color',
+                        get_radius='radius',
+                        opacity=0.30,
+                        stroked=True,
+                        get_line_color=[255, 255, 255],
+                        line_width_min_pixels=1,
+                        pickable=True,
+                    )
+                )
+
+            layers.append(
+                pdk.Layer(
+                    "ScatterplotLayer",
+                    data=home_data,
+                    get_position='[lng, lat]',
+                    get_fill_color=[17, 39, 31],
+                    get_line_color=[255, 255, 255],
+                    get_radius=96,
+                    stroked=True,
+                    line_width_min_pixels=3,
+                    pickable=True,
+                )
+            )
+            layers.append(
+                pdk.Layer(
+                    "TextLayer",
+                    data=home_data,
+                    get_position='[lng, lat]',
+                    get_text='name',
+                    get_color=[22, 36, 30],
+                    get_size=14,
+                    get_alignment_baseline='"top"',
+                    get_pixel_offset=[0, 22],
+                )
+            )
+
+            deck = pdk.Deck(
+                map_provider="carto",
+                map_style="light",
+                initial_view_state=pdk.ViewState(longitude=lng, latitude=lat, zoom=15.3, pitch=0),
+                layers=layers,
+                tooltip={"html": "<b>{name}</b><br/>{category}", "style": {"backgroundColor": "#15221c", "color": "white"}},
+            )
+            st.pydeck_chart(deck, use_container_width=True, height=450)
+        except Exception:
+            try:
+                import pandas as pd
+
+                fallback_rows = [{"lat": lat, "lon": lng}]
+                for p in source_points:
+                    fallback_rows.append({"lat": p["lat"], "lon": p["lng"]})
+                st.map(pd.DataFrame(fallback_rows), latitude="lat", longitude="lon", zoom=15)
+                st.markdown('<div class="subtle" style="margin-top:8px;">当前环境不支持高级热层，已回退为基础地图定位。</div>', unsafe_allow_html=True)
+            except Exception:
+                st.info("当前运行环境暂时无法加载地图组件。")
+
+
 def parse_geocode_result(query: str, community_repo: CommunityRepository, amap: AMapProvider) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any] | None, str, dict[str, Any] | None]:
     cleaned_query = strip_unit_details(query)
     tips = amap.input_tips(query) if amap.enabled() else []
@@ -171,6 +350,7 @@ def render_styles(result_mode: bool) -> None:
         .card-title {{font-size:24px; font-weight:700; color:#16241e; margin-bottom:6px; font-family: var(--font-display) !important; letter-spacing:-0.01em;}}
         .card-sub {{font-size:14px; line-height:1.7; color:#536159; margin-bottom:10px;}}
         .result-divider {{height:12px;}}
+        .map-note {{color:#5f6d66; font-size:12px; line-height:1.6; margin-top:8px;}}
         .subtle {{color:#4f5d55; font-size:13px; line-height:1.7;}}
 
         div[data-testid="stVerticalBlockBorderWrapper"] {{
@@ -478,6 +658,8 @@ def main() -> None:
     result = compute_position_result(zone_options, community_row, score_engine, int(noise_summary.get("total_penalty", 0)), selected_name)
 
     render_overview_card(query, community_row, result, noise_summary.get("signals", []))
+    st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
+    render_map_card(building_location_text, geocode_used, regeo, poi_results)
     st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
     render_penalty_card(noise_summary)
     st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
