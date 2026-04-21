@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import base64
+import json
+import os
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from amap_provider import AMapProvider
 from community_repository import CommunityRepository
@@ -43,6 +46,34 @@ def build_summary_line(signals: list[dict[str, Any]]) -> str:
         return f"该楼栋当前主要受{labels[0]}影响。"
     return f"该楼栋当前主要受{labels[0]}与{labels[1]}影响。"
 
+def get_amap_js_api_key(streamlit_secrets=None) -> str:
+    key = ""
+    if streamlit_secrets is not None:
+        try:
+            key = str(streamlit_secrets.get("AMAP_JS_API_KEY", "")).strip()
+        except Exception:
+            key = ""
+    if not key and streamlit_secrets is not None:
+        try:
+            key = str(streamlit_secrets.get("AMAP_API_KEY", "")).strip()
+        except Exception:
+            key = ""
+    if not key:
+        key = os.getenv("AMAP_JS_API_KEY", "").strip() or os.getenv("AMAP_API_KEY", "").strip()
+    return key
+
+
+def get_amap_js_security_code(streamlit_secrets=None) -> str:
+    code = ""
+    if streamlit_secrets is not None:
+        try:
+            code = str(streamlit_secrets.get("AMAP_JS_SECURITY_CODE", "")).strip()
+        except Exception:
+            code = ""
+    if not code:
+        code = os.getenv("AMAP_JS_SECURITY_CODE", "").strip()
+    return code
+
 
 def parse_location_text(location_text: str) -> tuple[float, float] | None:
     raw = str(location_text or "").strip()
@@ -55,37 +86,38 @@ def parse_location_text(location_text: str) -> tuple[float, float] | None:
         return None
 
 
-def build_map_points(regeo: dict[str, Any] | None, poi_results: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+def build_amap_overlay_points(regeo: dict[str, Any] | None, poi_results: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
     points: list[dict[str, Any]] = []
 
     roads = list((regeo or {}).get("roads", []) or [])
-    for road in roads[:8]:
+    for road in roads[:10]:
         parsed = parse_location_text(str(road.get("location", "")).strip())
         if not parsed:
             continue
         lng, lat = parsed
         name = str(road.get("name", "")).strip() or "道路"
-        strong = any(token in name for token in ["高速", "快速", "环路", "主路", "高架"])
+        strong = any(token in name for token in ["高速", "快速", "环路", "高架", "主路"])
         points.append(
             {
                 "lng": lng,
                 "lat": lat,
                 "name": name,
                 "category": "道路",
-                "weight": 1.0 if strong else 0.58,
-                "radius": 92 if strong else 72,
-                "color": [227, 98, 72] if strong else [243, 167, 82],
+                "radius": 220 if strong else 150,
+                "stroke": "#D85B42" if strong else "#E29C5D",
+                "fill": "rgba(216,91,66,0.20)" if strong else "rgba(226,156,93,0.16)",
+                "dot": "#D85B42" if strong else "#E29C5D",
             }
         )
 
     category_meta = {
-        "rail": ("轨道", [101, 126, 214], 0.82, 84, 5),
-        "school": ("学校", [106, 188, 166], 0.42, 68, 4),
-        "hospital": ("医院", [156, 129, 196], 0.28, 66, 4),
-        "commercial": ("商业", [237, 191, 73], 0.34, 66, 4),
-        "restaurant": ("餐饮", [222, 143, 90], 0.34, 66, 4),
+        "rail": ("轨道", 160, "#5D73D0", "rgba(93,115,208,0.16)", 6),
+        "school": ("学校", 120, "#5AB59B", "rgba(90,181,155,0.15)", 5),
+        "hospital": ("医院", 120, "#9479BF", "rgba(148,121,191,0.14)", 5),
+        "commercial": ("商业", 110, "#E4B24B", "rgba(228,178,75,0.13)", 4),
+        "restaurant": ("餐饮", 110, "#D99A64", "rgba(217,154,100,0.13)", 4),
     }
-    for key, (label, color, weight, radius, limit) in category_meta.items():
+    for key, (label, radius, stroke, fill, limit) in category_meta.items():
         for item in list(poi_results.get(key, []) or [])[:limit]:
             parsed = parse_location_text(str(item.get("location", "")).strip())
             if not parsed:
@@ -97,130 +129,264 @@ def build_map_points(regeo: dict[str, Any] | None, poi_results: dict[str, list[d
                     "lat": lat,
                     "name": str(item.get("name", "")).strip() or label,
                     "category": label,
-                    "weight": weight,
                     "radius": radius,
-                    "color": color,
+                    "stroke": stroke,
+                    "fill": fill,
+                    "dot": stroke,
                 }
             )
     return points
 
 
-def render_map_card(building_location_text: str, geocode_used: dict[str, Any] | None, regeo: dict[str, Any] | None, poi_results: dict[str, list[dict[str, Any]]]) -> None:
+def render_amap_map_card(js_api_key: str, js_security_code: str, building_location_text: str, geocode_used: dict[str, Any] | None, regeo: dict[str, Any] | None, poi_results: dict[str, list[dict[str, Any]]]) -> None:
     with st.container(border=True):
         st.markdown('<div class="card-title">环境地图</div>', unsafe_allow_html=True)
-        st.markdown('<div class="card-sub">先给你一个地图上的楼栋定位，再叠加道路、轨道和周边生活源形成的环境影响热层。它不是官方分贝图，而是帮助你更直观看楼栋暴露位置。</div>', unsafe_allow_html=True)
+        st.markdown('<div class="card-sub">这次直接用高德底图显示楼栋近似定位点，并把道路、轨道与周边生活源叠加成环境影响圈层。当前重点是看清楼栋在地图上的位置，不是做官方分贝图。</div>', unsafe_allow_html=True)
 
         center = parse_location_text(building_location_text)
         if not center:
             st.info("当前没有拿到可用的楼栋坐标，地图暂时无法显示。")
             return
+        if not js_api_key:
+            st.warning("当前没有配置高德 JS 地图 Key。请在 Streamlit secrets 中补充 `AMAP_JS_API_KEY`，或让它回退复用 `AMAP_API_KEY`。")
+            return
 
         lng, lat = center
         address_text = str((geocode_used or {}).get("formatted_address", "")).strip() or "—"
-        st.markdown(f'<div class="subtle" style="margin-bottom:10px;">地图定位：{address_text}</div>', unsafe_allow_html=True)
+        overlay_points = build_amap_overlay_points(regeo, poi_results)
+        payload = {
+            "center": {"lng": lng, "lat": lat},
+            "address": address_text,
+            "overlays": overlay_points,
+            "securityJsCode": js_security_code,
+            "apiKey": js_api_key,
+        }
+        payload_json = json.dumps(payload, ensure_ascii=False)
 
-        source_points = build_map_points(regeo, poi_results)
-        legend_items = []
-        if any(p["category"] == "道路" for p in source_points):
-            legend_items.append('<span class="pill">道路热层</span>')
-        if any(p["category"] == "轨道" for p in source_points):
-            legend_items.append('<span class="pill">轨道</span>')
-        if any(p["category"] == "学校" for p in source_points):
-            legend_items.append('<span class="pill">学校</span>')
-        if any(p["category"] == "医院" for p in source_points):
-            legend_items.append('<span class="pill">医院</span>')
-        if any(p["category"] in {"商业", "餐饮"} for p in source_points):
-            legend_items.append('<span class="pill">生活源</span>')
-        if legend_items:
-            st.markdown('<div class="pill-row" style="margin-top:0;margin-bottom:12px;">' + ''.join(legend_items) + '</div>', unsafe_allow_html=True)
+        html = f"""
+<div class="qb-map-wrap">
+  <div class="qb-map-note">地图定位点：当前识别到的楼栋近似位置。若后续拿到更细的楼栋面数据，可继续提高定位准确性。</div>
+  <div class="qb-map-legend">
+    <span><i class="road"></i>道路</span>
+    <span><i class="rail"></i>轨道</span>
+    <span><i class="school"></i>学校</span>
+    <span><i class="hospital"></i>医院</span>
+    <span><i class="life"></i>生活源</span>
+  </div>
+  <div id="amap-map"></div>
+</div>
 
-        try:
-            import pydeck as pdk
+<style>
+  .qb-map-wrap {{
+    width: 100%;
+  }}
+  .qb-map-note {{
+    color: #5f6d66;
+    font-size: 12px;
+    line-height: 1.6;
+    margin-bottom: 10px;
+  }}
+  .qb-map-legend {{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    margin-bottom:10px;
+    color:#33443c;
+    font-size:12px;
+  }}
+  .qb-map-legend span {{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:6px 10px;
+    border-radius:999px;
+    background:rgba(255,255,255,0.92);
+    border:1px solid rgba(21,34,26,0.08);
+  }}
+  .qb-map-legend i {{
+    width:10px;
+    height:10px;
+    border-radius:999px;
+    display:inline-block;
+  }}
+  .qb-map-legend i.road {{background:#D85B42;}}
+  .qb-map-legend i.rail {{background:#5D73D0;}}
+  .qb-map-legend i.school {{background:#5AB59B;}}
+  .qb-map-legend i.hospital {{background:#9479BF;}}
+  .qb-map-legend i.life {{background:#E4B24B;}}
+  #amap-map {{
+    width: 100%;
+    height: 520px;
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgba(21,34,26,0.08);
+  }}
+  .qb-home-pin {{
+    position: relative;
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    background: #11271f;
+    border: 4px solid white;
+    box-shadow: 0 8px 24px rgba(17,39,31,0.28);
+  }}
+  .qb-home-pin::after {{
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -10px;
+    width: 2px;
+    height: 12px;
+    background: #11271f;
+    transform: translateX(-50%);
+  }}
+  .qb-home-label {{
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.96);
+    color: #15221c;
+    border: 1px solid rgba(21,34,26,0.10);
+    box-shadow: 0 8px 24px rgba(10,19,16,0.12);
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }}
+  .qb-map-fallback {{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:100%;
+    height:520px;
+    border-radius:18px;
+    background:#f3f5f2;
+    color:#44534c;
+    font-size:13px;
+  }}
+</style>
 
-            heat_data = [
-                {"position": [p["lng"], p["lat"]], "weight": p["weight"], "name": p["name"], "category": p["category"]}
-                for p in source_points
-            ]
-            scatter_data = [
-                {"lng": p["lng"], "lat": p["lat"], "name": p["name"], "category": p["category"], "radius": p["radius"], "color": p["color"]}
-                for p in source_points
-            ]
-            home_data = [{"lng": lng, "lat": lat, "name": "目标楼栋", "category": "楼栋定位"}]
+<script>
+  const payload = {payload_json};
+  if (payload.securityJsCode) {{
+    window._AMapSecurityConfig = {{ securityJsCode: payload.securityJsCode }};
+  }}
 
-            layers = []
-            if heat_data:
-                layers.append(
-                    pdk.Layer(
-                        "HeatmapLayer",
-                        data=heat_data,
-                        get_position="position",
-                        get_weight="weight",
-                        radiusPixels=52,
-                        intensity=1.0,
-                        threshold=0.08,
-                        opacity=0.6,
-                    )
-                )
-                layers.append(
-                    pdk.Layer(
-                        "ScatterplotLayer",
-                        data=scatter_data,
-                        get_position='[lng, lat]',
-                        get_fill_color='color',
-                        get_radius='radius',
-                        opacity=0.30,
-                        stroked=True,
-                        get_line_color=[255, 255, 255],
-                        line_width_min_pixels=1,
-                        pickable=True,
-                    )
-                )
+  function loadAmapScript() {{
+    return new Promise((resolve, reject) => {{
+      if (window.AMap) {{
+        resolve(window.AMap);
+        return;
+      }}
+      const existing = document.getElementById("amap-js-sdk");
+      if (existing) {{
+        existing.addEventListener("load", () => resolve(window.AMap));
+        existing.addEventListener("error", reject);
+        return;
+      }}
+      const script = document.createElement("script");
+      script.id = "amap-js-sdk";
+      script.src = `https://webapi.amap.com/maps?v=2.0&key=${{payload.apiKey}}`;
+      script.async = true;
+      script.onload = () => resolve(window.AMap);
+      script.onerror = reject;
+      document.head.appendChild(script);
+    }});
+  }}
 
-            layers.append(
-                pdk.Layer(
-                    "ScatterplotLayer",
-                    data=home_data,
-                    get_position='[lng, lat]',
-                    get_fill_color=[17, 39, 31],
-                    get_line_color=[255, 255, 255],
-                    get_radius=96,
-                    stroked=True,
-                    line_width_min_pixels=3,
-                    pickable=True,
-                )
-            )
-            layers.append(
-                pdk.Layer(
-                    "TextLayer",
-                    data=home_data,
-                    get_position='[lng, lat]',
-                    get_text='name',
-                    get_color=[22, 36, 30],
-                    get_size=14,
-                    get_alignment_baseline='"top"',
-                    get_pixel_offset=[0, 22],
-                )
-            )
+  function renderFallback(message) {{
+    const el = document.getElementById("amap-map");
+    if (el) {{
+      el.innerHTML = `<div class="qb-map-fallback">${{message}}</div>`;
+    }}
+  }}
 
-            deck = pdk.Deck(
-                map_provider="carto",
-                map_style="light",
-                initial_view_state=pdk.ViewState(longitude=lng, latitude=lat, zoom=15.3, pitch=0),
-                layers=layers,
-                tooltip={"html": "<b>{name}</b><br/>{category}", "style": {"backgroundColor": "#15221c", "color": "white"}},
-            )
-            st.pydeck_chart(deck, use_container_width=True, height=450)
-        except Exception:
-            try:
-                import pandas as pd
+  function drawMap(AMap) {{
+    const map = new AMap.Map("amap-map", {{
+      zoom: 15.2,
+      center: [payload.center.lng, payload.center.lat],
+      viewMode: "2D",
+      mapStyle: "amap://styles/normal",
+      resizeEnable: true
+    }});
 
-                fallback_rows = [{"lat": lat, "lon": lng}]
-                for p in source_points:
-                    fallback_rows.append({"lat": p["lat"], "lon": p["lng"]})
-                st.map(pd.DataFrame(fallback_rows), latitude="lat", longitude="lon", zoom=15)
-                st.markdown('<div class="subtle" style="margin-top:8px;">当前环境不支持高级热层，已回退为基础地图定位。</div>', unsafe_allow_html=True)
-            except Exception:
-                st.info("当前运行环境暂时无法加载地图组件。")
+    map.addControl(new AMap.Scale());
+    map.addControl(new AMap.ToolBar({{ position: "RB" }}));
+
+    const markerTip = new AMap.Marker({{
+      map,
+      position: [payload.center.lng, payload.center.lat],
+      zIndex: 80,
+      content: '<div class="qb-home-pin"></div>',
+      offset: new AMap.Pixel(-13, -26)
+    }});
+
+    const homeLabel = new AMap.Marker({{
+      map,
+      position: [payload.center.lng, payload.center.lat],
+      zIndex: 81,
+      offset: new AMap.Pixel(0, -56),
+      content: '<div class="qb-home-label">目标楼栋（近似定位）</div>'
+    }});
+
+    payload.overlays.forEach((item) => {{
+      const circle = new AMap.Circle({{
+        center: [item.lng, item.lat],
+        radius: item.radius,
+        strokeColor: item.stroke,
+        strokeOpacity: 0.9,
+        strokeWeight: 2,
+        fillColor: item.fill,
+        fillOpacity: 1
+      }});
+      circle.setMap(map);
+
+      const dot = new AMap.CircleMarker({{
+        center: [item.lng, item.lat],
+        radius: 5,
+        strokeColor: "#ffffff",
+        strokeWeight: 2,
+        strokeOpacity: 1,
+        fillColor: item.dot,
+        fillOpacity: 0.95,
+        zIndex: 30
+      }});
+      dot.setMap(map);
+
+      const title = `${{item.category}}：${{item.name}}`;
+      circle.on("mouseover", () => {{
+        markerTip.setLabel({{
+          direction: "top",
+          offset: new AMap.Pixel(0, -8),
+          content: `<div class="qb-home-label">${{title}}</div>`
+        }});
+        markerTip.setPosition([item.lng, item.lat]);
+      }});
+      circle.on("mouseout", () => {{
+        markerTip.setLabel(null);
+        markerTip.setPosition([payload.center.lng, payload.center.lat]);
+      }});
+    }});
+
+    markerTip.on("click", () => {{
+      markerTip.setLabel({{
+        direction: "top",
+        offset: new AMap.Pixel(0, -8),
+        content: `<div class="qb-home-label">${{payload.address}}</div>`
+      }});
+    }});
+  }}
+
+  loadAmapScript()
+    .then((AMap) => {{
+      if (!AMap) {{
+        renderFallback("高德地图加载失败。");
+        return;
+      }}
+      drawMap(AMap);
+    }})
+    .catch(() => renderFallback("高德地图脚本未能加载。"));
+</script>
+"""
+        components.html(html, height=620)
 
 
 def parse_geocode_result(query: str, community_repo: CommunityRepository, amap: AMapProvider) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any] | None, str, dict[str, Any] | None]:
@@ -350,7 +516,6 @@ def render_styles(result_mode: bool) -> None:
         .card-title {{font-size:24px; font-weight:700; color:#16241e; margin-bottom:6px; font-family: var(--font-display) !important; letter-spacing:-0.01em;}}
         .card-sub {{font-size:14px; line-height:1.7; color:#536159; margin-bottom:10px;}}
         .result-divider {{height:12px;}}
-        .map-note {{color:#5f6d66; font-size:12px; line-height:1.6; margin-top:8px;}}
         .subtle {{color:#4f5d55; font-size:13px; line-height:1.7;}}
 
         div[data-testid="stVerticalBlockBorderWrapper"] {{
@@ -659,7 +824,7 @@ def main() -> None:
 
     render_overview_card(query, community_row, result, noise_summary.get("signals", []))
     st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
-    render_map_card(building_location_text, geocode_used, regeo, poi_results)
+    render_amap_map_card(get_amap_js_api_key(st.secrets), get_amap_js_security_code(st.secrets), building_location_text, geocode_used, regeo, poi_results)
     st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
     render_penalty_card(noise_summary)
     st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
