@@ -8,7 +8,7 @@ BACKGROUND_FILE = Path("background.jpg")
 COMMUNITIES_FILE = Path("communities.csv")
 COMMUNITY_ZONES_FILE = Path("community_zones.csv")
 
-DEFAULT_BASE_SCORE = 75
+DEFAULT_BASE_SCORE = 85
 AMAP_CITY = "北京市"
 TIMEOUT_SECONDS = 8
 

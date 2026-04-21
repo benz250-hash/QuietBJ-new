@@ -6,7 +6,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class ScoreConfig:
-    standard_base_score: int = 75
+    standard_base_score: int = 85
 
     # 轻量 TNM 化 v2：道路分层
     expressway_bands: list[tuple[int, int]] | None = None

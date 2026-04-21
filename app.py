@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import csv
 import re
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from zone_repository import ZoneRepository
 
 st.set_page_config(page_title="QuietBJ｜安宁北京", page_icon="🔇", layout="wide")
 
+BUILDING_OVERRIDES_FILE = Path("building_overrides.csv")
 
 # ---------- shared helpers ----------
 def file_to_base64(path: str | Path) -> str:
@@ -43,6 +45,143 @@ def build_summary_line(signals: list[dict[str, Any]]) -> str:
     if len(labels) == 1:
         return f"该楼栋当前主要受{labels[0]}影响。"
     return f"该楼栋当前主要受{labels[0]}与{labels[1]}影响。"
+
+
+def _to_int_distance(value: Any) -> int | None:
+    try:
+        if value in ("", None):
+            return None
+        return int(round(float(value)))
+    except Exception:
+        return None
+
+
+def score_signal_by_label(score_engine: ScoreEngine, label: str, distance_m: Any) -> int:
+    distance = _to_int_distance(distance_m)
+    if distance is None:
+        return 0
+    text = str(label or "").strip()
+    cfg = score_engine.cfg
+    if "高速" in text or "快速路" in text:
+        return score_engine.band_score(distance, cfg.expressway_bands)
+    if "主干路" in text:
+        return score_engine.band_score(distance, cfg.arterial_bands)
+    if "次干路" in text:
+        return score_engine.band_score(distance, cfg.secondary_bands)
+    if "小区内部路" in text or "内部路" in text:
+        return score_engine.band_score(distance, cfg.internal_bands)
+    if "小路" in text or "支路" in text:
+        return score_engine.band_score(distance, cfg.local_bands)
+    if "轨道" in text or "地铁" in text:
+        return score_engine.band_score(distance, cfg.rail_bands)
+    if "学校" in text:
+        return score_engine.band_score(distance, cfg.school_bands)
+    if "医院" in text:
+        return score_engine.band_score(distance, cfg.hospital_bands)
+    if "餐饮" in text:
+        return score_engine.band_score(distance, cfg.restaurant_bands)
+    if "商业" in text or "底商" in text or "商场" in text or "超市" in text or "便利店" in text:
+        return score_engine.band_score(distance, cfg.commercial_bands)
+    return int(distance <= 80)
+
+
+def refine_noise_summary(noise_summary: dict[str, Any], score_engine: ScoreEngine) -> dict[str, Any]:
+    signals = list(noise_summary.get("signals", []) or [])
+    refined: list[dict[str, Any]] = []
+    for sig in signals:
+        row = dict(sig)
+        row["penalty"] = score_signal_by_label(score_engine, row.get("label", ""), row.get("distance_m", ""))
+        refined.append(row)
+
+    # local/internal synthetic cap if those labels exist
+    local_total = sum(
+        int(item.get("penalty", 0))
+        for item in refined
+        if any(x in str(item.get("label", "")) for x in ["小路", "支路", "内部路", "小区内部路"])
+    )
+    if local_total > 4:
+        overflow = local_total - 4
+        for item in reversed(refined):
+            if overflow <= 0:
+                break
+            if any(x in str(item.get("label", "")) for x in ["小路", "支路", "内部路", "小区内部路"]):
+                current = int(item.get("penalty", 0))
+                if current <= 0:
+                    continue
+                reduce_by = min(current, overflow)
+                item["penalty"] = current - reduce_by
+                overflow -= reduce_by
+
+    total_penalty = sum(int(item.get("penalty", 0)) for item in refined)
+    return {"signals": refined, "total_penalty": total_penalty}
+
+
+def load_building_overrides(path: str | Path = BUILDING_OVERRIDES_FILE) -> dict[tuple[str, str], dict[str, str]]:
+    file_path = Path(path)
+    if not file_path.exists():
+        return {}
+    rows: dict[tuple[str, str], dict[str, str]] = {}
+    try:
+        with file_path.open("r", encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                community_name = normalize_match_text(str(row.get("community_name", "")).strip())
+                building_token = normalize_match_text(str(row.get("building_token", "")).strip())
+                if not community_name or not building_token:
+                    continue
+                rows[(community_name, building_token)] = {
+                    "zone_type": str(row.get("zone_type", "")).strip(),
+                    "locator_confidence_override": str(row.get("locator_confidence_override", "")).strip(),
+                    "notes": str(row.get("notes", "")).strip(),
+                }
+    except Exception:
+        return {}
+    return rows
+
+
+def apply_building_override(community_row: dict[str, Any], query: str, overrides: dict[tuple[str, str], dict[str, str]]) -> dict[str, Any]:
+    detail_token = str(community_row.get("_detail_token", "")).strip() or extract_building_token(query)
+    if not detail_token:
+        return community_row
+    community_keys = [
+        normalize_match_text(str(community_row.get("community_name", "")).strip()),
+        normalize_match_text(str(community_row.get("_query_used", "")).strip()),
+        normalize_match_text(strip_unit_details(query)),
+    ]
+    building_key = normalize_match_text(detail_token)
+    hit = None
+    for key in community_keys:
+        if not key:
+            continue
+        candidate = overrides.get((key, building_key))
+        if candidate:
+            hit = candidate
+            break
+    if not hit:
+        return community_row
+
+    row = dict(community_row)
+    row["_override_zone_type"] = str(hit.get("zone_type", "")).strip()
+    row["_override_notes"] = str(hit.get("notes", "")).strip()
+    row["_locator_confidence"] = (
+        {"high": "高", "medium": "中", "low": "低"}.get(
+            str(hit.get("locator_confidence_override", "")).strip().lower(),
+            row.get("_locator_confidence", ""),
+        )
+        or row.get("_locator_confidence", "")
+    )
+    row["_locator_mode"] = "人工校正"
+    note = row["_override_notes"] or f"当前已命中人工校正规则，按 {row['_override_zone_type']} 处理。"
+    row["_locator_note"] = note
+    map_labels = {
+        "street_front": "目标楼栋（人工校正）",
+        "edge_building": "目标楼栋（人工校正）",
+        "central": "目标楼栋（人工校正）",
+        "quiet_inner": "目标楼栋（人工校正）",
+        "compound_approx": "园区级近似点（人工校正）",
+    }
+    row["_map_label"] = map_labels.get(row["_override_zone_type"], row.get("_map_label", "目标楼栋"))
+    return row
 
 
 def normalize_match_text(value: str) -> str:
@@ -667,6 +806,9 @@ def render_overview_card(query: str, community_row: dict[str, Any], result: dict
                 pills.append(f'<span class="pill">定位置信度 {locator_conf}</span>')
             if locator_mode:
                 pills.append(f'<span class="pill">{locator_mode}</span>')
+            override_zone_type = str(community_row.get("_override_zone_type", "")).strip()
+            if override_zone_type:
+                pills.append('<span class="pill">人工校正</span>')
             st.markdown('<div class="pill-row">' + ''.join(pills) + '</div>', unsafe_allow_html=True)
             st.markdown(
                 f'<div class="subtle" style="margin-top:12px;">楼栋输入：{query}｜用于小区匹配的文本：{community_row.get("_query_used", "") or query}</div>',
@@ -676,6 +818,11 @@ def render_overview_card(query: str, community_row: dict[str, Any], result: dict
                 f'<div class="subtle" style="margin-top:6px;"><strong style="color:#173a2d;">识别说明：</strong>{community_row.get("_locator_note", "当前按楼栋近似位置估算。")}</div>',
                 unsafe_allow_html=True,
             )
+            if override_zone_type:
+                st.markdown(
+                    f'<div class="subtle" style="margin-top:6px;"><strong style="color:#173a2d;">空间语境：</strong>已命中人工校正规则，当前按 {override_zone_type} 处理。</div>',
+                    unsafe_allow_html=True,
+                )
             metric_html = [
                 ("标准基准分", str(DEFAULT_BASE_SCORE), "统一基准评估"),
                 ("楼栋位置调整", f"{result['zone_adjust']:+d}", "来自楼栋位置"),
@@ -746,6 +893,7 @@ def render_debug_card(geocode_used: dict[str, Any] | None, building_location_tex
             st.write(f"楼号细节：{str(community_row.get('_detail_token', '')).strip() or '—'}")
             st.write(f"定位模式：{str(community_row.get('_locator_mode', '')).strip() or '—'}")
             st.write(f"定位置信度：{str(community_row.get('_locator_confidence', '')).strip() or '—'}")
+            st.write(f"人工校正规则：{str(community_row.get('_override_zone_type', '')).strip() or '—'}")
         with c2:
             st.markdown("**高德候选**")
             if tip_list:
@@ -768,7 +916,6 @@ def main() -> None:
     community_repo = CommunityRepository(str(COMMUNITIES_FILE))
     zone_repo = ZoneRepository(str(COMMUNITY_ZONES_FILE))
     amap = AMapProvider(get_amap_api_key(st.secrets))
-    noise_engine = NoisePointEngine()
     score_engine = ScoreEngine()
 
     if result_mode:
@@ -798,6 +945,7 @@ def main() -> None:
         return
 
     community_row, tip_list, regeo, building_location_text, geocode_used = parse_geocode_result(query, community_repo, amap)
+    community_row = apply_building_override(community_row, query, building_overrides)
     poi_results: dict[str, list[dict[str, Any]]] = {}
     if amap.enabled() and building_location_text:
         poi_results = {
@@ -807,7 +955,8 @@ def main() -> None:
             "restaurant": amap.search_around(building_location_text, "餐饮服务", radius=300),
             "rail": amap.search_around(building_location_text, "地铁站", radius=800),
         }
-    noise_summary = noise_engine.evaluate(regeo, poi_results)
+    raw_noise_summary = NoisePointEngine().evaluate(regeo, poi_results)
+    noise_summary = refine_noise_summary(raw_noise_summary, score_engine)
 
     community_code = str(community_row.get("community_code", ""))
     zone_options = zone_repo.get_by_community(community_code)
@@ -822,7 +971,11 @@ def main() -> None:
         ]
 
     zone_labels = [str(z.get("zone_name", "")) for z in zone_options]
-    default_idx = next((i for i, z in enumerate(zone_options) if str(z.get("zone_code", "")) in {"central_inner", "DEFAULT", "default"}), 0)
+    override_zone_type = str(community_row.get("_override_zone_type", "")).strip()
+    if override_zone_type:
+        default_idx = next((i for i, z in enumerate(zone_options) if str(z.get("zone_code", "")).strip() == override_zone_type), 0)
+    else:
+        default_idx = next((i for i, z in enumerate(zone_options) if str(z.get("zone_code", "")) in {"central_inner", "DEFAULT", "default"}), 0)
     zone_key = f"zone_select::{community_code or 'default'}"
     if zone_key not in st.session_state:
         st.session_state[zone_key] = zone_labels[default_idx]
