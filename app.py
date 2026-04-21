@@ -11,7 +11,15 @@ import streamlit.components.v1 as components
 
 from amap_provider import AMapProvider
 from community_repository import CommunityRepository
-from config import BACKGROUND_FILE, COMMUNITIES_FILE, COMMUNITY_ZONES_FILE, DEFAULT_BASE_SCORE, get_amap_api_key
+from config import (
+    BACKGROUND_FILE,
+    COMMUNITIES_FILE,
+    COMMUNITY_ZONES_FILE,
+    DEFAULT_BASE_SCORE,
+    get_amap_api_key,
+    get_amap_js_api_key,
+    get_amap_js_security_code,
+)
 from noise_point_engine import NoisePointEngine
 from score_engine import ScoreEngine
 from text_match import strip_unit_details
@@ -45,35 +53,6 @@ def build_summary_line(signals: list[dict[str, Any]]) -> str:
     if len(labels) == 1:
         return f"该楼栋当前主要受{labels[0]}影响。"
     return f"该楼栋当前主要受{labels[0]}与{labels[1]}影响。"
-
-def get_amap_js_api_key(streamlit_secrets=None) -> str:
-    key = ""
-    if streamlit_secrets is not None:
-        try:
-            key = str(streamlit_secrets.get("AMAP_JS_API_KEY", "")).strip()
-        except Exception:
-            key = ""
-    if not key and streamlit_secrets is not None:
-        try:
-            key = str(streamlit_secrets.get("AMAP_API_KEY", "")).strip()
-        except Exception:
-            key = ""
-    if not key:
-        key = os.getenv("AMAP_JS_API_KEY", "").strip() or os.getenv("AMAP_API_KEY", "").strip()
-    return key
-
-
-def get_amap_js_security_code(streamlit_secrets=None) -> str:
-    code = ""
-    if streamlit_secrets is not None:
-        try:
-            code = str(streamlit_secrets.get("AMAP_JS_SECURITY_CODE", "")).strip()
-        except Exception:
-            code = ""
-    if not code:
-        code = os.getenv("AMAP_JS_SECURITY_CODE", "").strip()
-    return code
-
 
 def parse_location_text(location_text: str) -> tuple[float, float] | None:
     raw = str(location_text or "").strip()
