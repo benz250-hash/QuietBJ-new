@@ -13,12 +13,14 @@ from community_repository import CommunityRepository
 from config import BACKGROUND_FILE, COMMUNITIES_FILE, COMMUNITY_ZONES_FILE, DEFAULT_BASE_SCORE, get_amap_api_key
 from noise_point_engine import NoisePointEngine
 from score_engine import ScoreEngine
+from shielding_engine import apply_shielding_to_road_impact, get_cached_buildings, infer_shielding, load_building_cache
 from text_match import strip_unit_details
 from zone_repository import ZoneRepository
 
 st.set_page_config(page_title="QuietBJ｜安宁北京", page_icon="🔇", layout="wide")
 
 BUILDING_OVERRIDES_FILE = Path("building_overrides.csv")
+COMMUNITY_BUILDING_CACHE_FILE = Path("community_building_cache.json")
 
 # ---------- shared helpers ----------
 def file_to_base64(path: str | Path) -> str:
@@ -114,6 +116,119 @@ def refine_noise_summary(noise_summary: dict[str, Any], score_engine: ScoreEngin
 
     total_penalty = sum(int(item.get("penalty", 0)) for item in refined)
     return {"signals": refined, "total_penalty": total_penalty}
+
+
+def _distance_between_gcj_points_m(a: tuple[float, float], b: tuple[float, float]) -> float:
+    # 用近似平面距离即可，当前只用于同小区量级的相对匹配
+    import math
+    lat = (a[1] + b[1]) / 2
+    lat_rad = math.radians(lat)
+    m_per_deg_lat = 111132.92 - 559.82 * math.cos(2 * lat_rad) + 1.175 * math.cos(4 * lat_rad)
+    m_per_deg_lon = 111412.84 * math.cos(lat_rad) - 93.5 * math.cos(3 * lat_rad)
+    dx = (a[0] - b[0]) * m_per_deg_lon
+    dy = (a[1] - b[1]) * m_per_deg_lat
+    return math.hypot(dx, dy)
+
+
+def road_kind_from_label(label: str) -> str:
+    text = str(label or "").strip()
+    if "高速" in text or "快速路" in text:
+        return "expressway"
+    if "主干路" in text:
+        return "arterial"
+    if "次干路" in text:
+        return "secondary"
+    if "小区内部路" in text or "内部路" in text:
+        return "internal"
+    if "小路" in text or "支路" in text:
+        return "local"
+    return ""
+
+
+def choose_road_point_for_signal(
+    target_point: tuple[float, float],
+    signal_distance_m: Any,
+    regeo: dict[str, Any] | None,
+) -> tuple[float, float] | None:
+    roads = list((regeo or {}).get("roads", []) or [])
+    candidates: list[tuple[float, tuple[float, float]]] = []
+    distance_hint = _to_int_distance(signal_distance_m)
+    for road in roads:
+        parsed = parse_location_text(str(road.get("location", "")).strip())
+        if not parsed:
+            continue
+        actual = _distance_between_gcj_points_m(target_point, parsed)
+        if distance_hint is None:
+            gap = actual
+        else:
+            gap = abs(actual - distance_hint)
+        candidates.append((gap, parsed))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x: x[0])
+    return candidates[0][1]
+
+
+def apply_road_shielding(
+    noise_summary: dict[str, Any],
+    community_row: dict[str, Any],
+    building_location_text: str,
+    regeo: dict[str, Any] | None,
+    cache_path: str | Path = COMMUNITY_BUILDING_CACHE_FILE,
+) -> dict[str, Any]:
+    target_point = parse_location_text(building_location_text)
+    detail_token = str(community_row.get("_detail_token", "")).strip()
+    community_name = str(community_row.get("community_name", "")).strip()
+    if not target_point or not detail_token or not community_name:
+        return noise_summary
+
+    cache = load_building_cache(cache_path)
+    building_points = get_cached_buildings(cache, community_name)
+    if not building_points:
+        return noise_summary
+
+    refined: list[dict[str, Any]] = []
+    changed = False
+    for sig in list(noise_summary.get("signals", []) or []):
+        row = dict(sig)
+        kind = road_kind_from_label(row.get("label", ""))
+        if not kind:
+            refined.append(row)
+            continue
+
+        road_point = choose_road_point_for_signal(target_point, row.get("distance_m", ""), regeo)
+        if not road_point:
+            refined.append(row)
+            continue
+
+        shielding = infer_shielding(
+            target_point=target_point,
+            road_point=road_point,
+            building_points=building_points,
+            target_building_token=detail_token,
+            corridor_width_m=20.0,
+        )
+        adjusted = apply_shielding_to_road_impact(
+            raw_impact=int(row.get("penalty", 0)),
+            shielding_level=shielding["shielding_level"],
+            road_kind=kind,
+        )
+        row["raw_penalty"] = adjusted["raw_impact"]
+        row["penalty"] = adjusted["adjusted_impact"]
+        row["shielding_level"] = adjusted["shielding_level"]
+        row["shielding_factor"] = adjusted["factor"]
+        row["blocker_count"] = shielding["blocker_count"]
+        row["blocker_names"] = shielding["blocker_names"]
+        if adjusted["adjusted_impact"] != adjusted["raw_impact"]:
+            changed = True
+        refined.append(row)
+
+    total_penalty = sum(int(item.get("penalty", 0)) for item in refined)
+    result = dict(noise_summary)
+    result["signals"] = refined
+    result["total_penalty"] = total_penalty
+    result["shielding_applied"] = changed
+    return result
 
 
 def load_building_overrides(path: str | Path = BUILDING_OVERRIDES_FILE) -> dict[tuple[str, str], dict[str, str]]:
@@ -859,8 +974,18 @@ def render_penalty_card(noise_summary: dict[str, Any]) -> None:
         else:
             rows = []
             for sig in sorted(signals, key=lambda x: int(x.get("penalty", 0)), reverse=True):
+                right_text = f'{sig.get("distance_m", "-")}m ｜ 影响值 {int(sig.get("penalty", 0))}'
+                raw_penalty = sig.get("raw_penalty")
+                shielding_level = str(sig.get("shielding_level", "")).strip()
+                blocker_count = int(sig.get("blocker_count", 0) or 0)
+                if raw_penalty not in ("", None) and int(raw_penalty) != int(sig.get("penalty", 0)):
+                    right_text = f'{sig.get("distance_m", "-")}m ｜ 原始 {int(raw_penalty)} → 遮挡后 {int(sig.get("penalty", 0))}'
+                detail_text = str(sig.get("detail", "")).strip()
+                if shielding_level and shielding_level != "none":
+                    detail_suffix = f'｜前排遮挡 {shielding_level}（挡住 {blocker_count} 栋）'
+                    detail_text = (detail_text + detail_suffix).strip("｜")
                 rows.append(
-                    f'<div class="deduct-row"><div><div class="deduct-title">{sig.get("label", "")}</div><div class="deduct-detail">{sig.get("detail", "")}</div></div><div class="deduct-right">{sig.get("distance_m", "-")}m ｜ 影响值 {int(sig.get("penalty", 0))}</div></div>'
+                    f'<div class="deduct-row"><div><div class="deduct-title">{sig.get("label", "")}</div><div class="deduct-detail">{detail_text}</div></div><div class="deduct-right">{right_text}</div></div>'
                 )
             st.markdown(''.join(rows), unsafe_allow_html=True)
             st.markdown(f"<div class='subtle' style='margin-top:10px;'>总体环境影响值：<strong style='color:#173a2d;'>{int(noise_summary.get('total_penalty', 0))}</strong></div>", unsafe_allow_html=True)
@@ -894,6 +1019,7 @@ def render_debug_card(geocode_used: dict[str, Any] | None, building_location_tex
             st.write(f"定位模式：{str(community_row.get('_locator_mode', '')).strip() or '—'}")
             st.write(f"定位置信度：{str(community_row.get('_locator_confidence', '')).strip() or '—'}")
             st.write(f"人工校正规则：{str(community_row.get('_override_zone_type', '')).strip() or '—'}")
+            st.write(f"楼栋缓存：{COMMUNITY_BUILDING_CACHE_FILE.name}")
         with c2:
             st.markdown("**高德候选**")
             if tip_list:
@@ -958,6 +1084,7 @@ def main() -> None:
         }
     raw_noise_summary = NoisePointEngine().evaluate(regeo, poi_results)
     noise_summary = refine_noise_summary(raw_noise_summary, score_engine)
+    noise_summary = apply_road_shielding(noise_summary, community_row, building_location_text, regeo)
 
     community_code = str(community_row.get("community_code", ""))
     zone_options = zone_repo.get_by_community(community_code)

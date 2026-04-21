@@ -1,0 +1,32 @@
+{
+  "国奥村": {
+    "source": "amap_poi_search",
+    "updated_at": "2026-04-21T00:00:00",
+    "buildings": [
+      {
+        "name": "国奥村14号楼",
+        "building_token": "14号楼",
+        "lon": 116.40123,
+        "lat": 39.99888
+      },
+      {
+        "name": "国奥村16号楼",
+        "building_token": "16号楼",
+        "lon": 116.4021,
+        "lat": 39.99821
+      },
+      {
+        "name": "国奥村17号楼",
+        "building_token": "17号楼",
+        "lon": 116.40178,
+        "lat": 39.99802
+      },
+      {
+        "name": "国奥村10号楼",
+        "building_token": "10号楼",
+        "lon": 116.40132,
+        "lat": 39.99866
+      }
+    ]
+  }
+}
