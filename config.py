@@ -7,7 +7,10 @@ from typing import Any
 BACKGROUND_FILE = Path("background.jpg")
 COMMUNITIES_FILE = Path("communities.csv")
 COMMUNITY_ZONES_FILE = Path("community_zones.csv")
+
 DEFAULT_BASE_SCORE = 75
+AMAP_CITY = "北京市"
+TIMEOUT_SECONDS = 8
 
 
 def _read_secret(secrets: Any = None, name: str = "") -> str:
