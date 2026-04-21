@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,110 @@ def build_summary_line(signals: list[dict[str, Any]]) -> str:
     if len(labels) == 1:
         return f"该楼栋当前主要受{labels[0]}影响。"
     return f"该楼栋当前主要受{labels[0]}与{labels[1]}影响。"
+
+
+def normalize_match_text(value: str) -> str:
+    return re.sub(r"[\s\-—_·•,，。/｜|（）()【】\[\]{}<>:：]+", "", str(value or "").strip().lower())
+
+
+def extract_building_token(value: str) -> str:
+    text = str(value or "").strip()
+    patterns = [
+        r"\d+号楼",
+        r"\d+号院",
+        r"\d+栋",
+        r"\d+座",
+        r"[A-Za-z]座",
+        r"[A-Za-z]栋",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return match.group(0)
+    return ""
+
+
+def candidate_text_from_tip(tip: dict[str, Any]) -> str:
+    return " ".join(
+        [
+            str(tip.get("name", "")).strip(),
+            str(tip.get("district", "")).strip(),
+            str(tip.get("address", "")).strip(),
+        ]
+    ).strip()
+
+
+def build_locator_meta(
+    query: str,
+    cleaned_query: str,
+    tips: list[dict[str, Any]],
+    geocode_used: dict[str, Any] | None,
+    building_location_text: str,
+) -> dict[str, Any]:
+    detail_token = extract_building_token(query)
+    detail_norm = normalize_match_text(detail_token)
+    cleaned_norm = normalize_match_text(cleaned_query or query)
+
+    geocode_candidates = []
+    if geocode_used:
+        geocode_candidates.extend(
+            [
+                str(geocode_used.get("formatted_address", "")).strip(),
+                str(geocode_used.get("district", "")).strip(),
+                str(geocode_used.get("name", "")).strip(),
+            ]
+        )
+    tip_candidates = [candidate_text_from_tip(tip) for tip in tips[:8]]
+    all_candidates = [x for x in geocode_candidates + tip_candidates if str(x).strip()]
+    all_norm = [normalize_match_text(x) for x in all_candidates]
+
+    detail_hit = bool(detail_norm) and any(detail_norm in item for item in all_norm)
+    community_hit = bool(cleaned_norm) and any(cleaned_norm in item for item in all_norm)
+    building_like_tip = any(extract_building_token(candidate_text_from_tip(tip)) for tip in tips[:8])
+
+    if detail_token and detail_hit and building_location_text:
+        return {
+            "confidence": "高",
+            "mode": "楼栋级定位",
+            "note": f"高德候选中保留了“{detail_token}”这类楼号信息，本次按楼栋级结果展示。",
+            "display_name": query,
+            "map_label": "目标楼栋（楼栋定位）",
+        }
+
+    if detail_token and building_like_tip and community_hit and building_location_text:
+        return {
+            "confidence": "中",
+            "mode": "楼栋近似定位",
+            "note": f"当前拿到的是同园区内的建筑级候选，但未稳定命中“{detail_token}”，本次按近似楼栋位置估算。",
+            "display_name": f"{cleaned_query or query}（楼栋近似）",
+            "map_label": "目标楼栋（近似定位）",
+        }
+
+    if detail_token and (community_hit or building_location_text):
+        return {
+            "confidence": "低",
+            "mode": "园区级近似定位",
+            "note": f"当前未稳定命中“{detail_token}”，只识别到园区/小区级主 POI，本次按园区级位置估算。",
+            "display_name": cleaned_query or query,
+            "map_label": "园区级近似点",
+        }
+
+    if building_location_text:
+        return {
+            "confidence": "中",
+            "mode": "小区级定位",
+            "note": "当前未输入明确楼号，系统按小区/园区级位置估算。",
+            "display_name": cleaned_query or query,
+            "map_label": "目标位置",
+        }
+
+    return {
+        "confidence": "低",
+        "mode": "未稳定定位",
+        "note": "当前没有拿到稳定的楼栋或园区定位结果，请尽量补充更完整的地址。",
+        "display_name": cleaned_query or query,
+        "map_label": "目标位置",
+    }
 
 # ---------- coordinate helpers ----------
 PI = 3.1415926535897932384626
@@ -168,7 +273,7 @@ def build_light_map_sources(
     return rows
 
 
-def render_open_map_card(building_location_text: str, geocode_used: dict[str, Any] | None, regeo: dict[str, Any] | None, poi_results: dict[str, list[dict[str, Any]]], signals: list[dict[str, Any]]) -> None:
+def render_open_map_card(building_location_text: str, geocode_used: dict[str, Any] | None, regeo: dict[str, Any] | None, poi_results: dict[str, list[dict[str, Any]]], signals: list[dict[str, Any]], community_row: dict[str, Any]) -> None:
     with st.container(border=True):
         st.markdown('<div class="card-title">环境地图</div>', unsafe_allow_html=True)
         st.markdown('<div class="card-sub">保留高德取数，但展示层回到更稳的 opensource 底图。地图上的目标楼栋点已做 GCJ-02 → WGS84 坐标转换，避免整体错位。</div>', unsafe_allow_html=True)
@@ -187,10 +292,11 @@ def render_open_map_card(building_location_text: str, geocode_used: dict[str, An
         lon, lat = center
         address_text = str((geocode_used or {}).get("formatted_address", "")).strip() or "—"
 
+        map_label = str(community_row.get("_map_label", "目标楼栋（近似定位）")).strip() or "目标楼栋（近似定位）"
         building_row = [{
             "lon": lon,
             "lat": lat,
-            "name": "目标楼栋（近似定位）",
+            "name": map_label,
             "address": address_text,
         }]
         source_rows = build_light_map_sources(regeo, poi_results, signals)
@@ -204,7 +310,7 @@ def render_open_map_card(building_location_text: str, geocode_used: dict[str, An
             unsafe_allow_html=True,
         )
         st.markdown(
-            f'<div class="subtle" style="margin-bottom:10px;">地图定位点：{address_text}。该点用于环境暴露估算，当前按楼栋近似位置显示，不代表建筑几何中心。</div>',
+            f'<div class="subtle" style="margin-bottom:10px;">地图定位点：{address_text}。{community_row.get("_locator_note", "当前按楼栋近似位置估算。")} 不代表建筑几何中心。</div>',
             unsafe_allow_html=True,
         )
 
@@ -280,8 +386,9 @@ def parse_geocode_result(query: str, community_repo: CommunityRepository, amap: 
     geocode_full = amap.geocode(query) if amap.enabled() else None
     geocode_clean = amap.geocode(cleaned_query) if amap.enabled() and not geocode_full else None
     geocode_used = geocode_full or geocode_clean
-    building_location_text = str(geocode_used.get("location", "")).strip() if geocode_used else ""
+    building_location_text = str((geocode_used or {}).get("location", "")).strip()
     regeo = amap.reverse_geocode(building_location_text) if amap.enabled() and building_location_text else None
+    locator_meta = build_locator_meta(query, cleaned_query, tips, geocode_used, building_location_text)
 
     if community_match:
         community_row = dict(community_match.row)
@@ -302,7 +409,15 @@ def parse_geocode_result(query: str, community_repo: CommunityRepository, amap: 
             "_match_confidence": "",
             "_query_used": cleaned_query,
         }
+
+    community_row["_detail_token"] = extract_building_token(query)
+    community_row["_locator_confidence"] = locator_meta["confidence"]
+    community_row["_locator_mode"] = locator_meta["mode"]
+    community_row["_locator_note"] = locator_meta["note"]
+    community_row["_display_name"] = locator_meta["display_name"]
+    community_row["_map_label"] = locator_meta["map_label"]
     return community_row, tips, regeo, building_location_text, geocode_used
+
 
 
 def compute_position_result(zone_options: list[dict[str, Any]], community_row: dict[str, Any], score_engine: ScoreEngine, noise_penalty: int, selected_name: str) -> dict[str, Any]:
@@ -537,7 +652,7 @@ def render_overview_card(query: str, community_row: dict[str, Any], result: dict
     with st.container(border=True):
         left, right = st.columns([1.25, 0.95], vertical_alignment="top")
         with left:
-            st.markdown(f'<div class="overview-name">{community_row.get("community_name", "目标小区")}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="overview-name">{community_row.get("_display_name") or community_row.get("community_name", "目标小区")}</div>', unsafe_allow_html=True)
             st.markdown(f'<div class="overview-line">{build_summary_line(signals)}</div>', unsafe_allow_html=True)
             pills = [f'<span class="pill">标准基准分 {DEFAULT_BASE_SCORE}</span>']
             district = str(community_row.get("district", "")).strip()
@@ -546,9 +661,19 @@ def render_overview_card(query: str, community_row: dict[str, Any], result: dict
             source = str(community_row.get("_match_source", "")).strip()
             if source:
                 pills.append(f'<span class="pill">{source}</span>')
+            locator_conf = str(community_row.get("_locator_confidence", "")).strip()
+            locator_mode = str(community_row.get("_locator_mode", "")).strip()
+            if locator_conf:
+                pills.append(f'<span class="pill">定位置信度 {locator_conf}</span>')
+            if locator_mode:
+                pills.append(f'<span class="pill">{locator_mode}</span>')
             st.markdown('<div class="pill-row">' + ''.join(pills) + '</div>', unsafe_allow_html=True)
             st.markdown(
                 f'<div class="subtle" style="margin-top:12px;">楼栋输入：{query}｜用于小区匹配的文本：{community_row.get("_query_used", "") or query}</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f'<div class="subtle" style="margin-top:6px;"><strong style="color:#173a2d;">识别说明：</strong>{community_row.get("_locator_note", "当前按楼栋近似位置估算。")}</div>',
                 unsafe_allow_html=True,
             )
             metric_html = [
@@ -618,6 +743,9 @@ def render_debug_card(geocode_used: dict[str, Any] | None, building_location_tex
             st.write(f"location：{building_location_text or '—'}")
             district = str((geocode_used or {}).get("district", "")).strip() or str(community_row.get("district", "")).strip()
             st.write(f"district：{district or '—'}")
+            st.write(f"楼号细节：{str(community_row.get('_detail_token', '')).strip() or '—'}")
+            st.write(f"定位模式：{str(community_row.get('_locator_mode', '')).strip() or '—'}")
+            st.write(f"定位置信度：{str(community_row.get('_locator_confidence', '')).strip() or '—'}")
         with c2:
             st.markdown("**高德候选**")
             if tip_list:
@@ -707,7 +835,7 @@ def main() -> None:
 
     render_overview_card(query, community_row, result, noise_summary.get("signals", []))
     st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
-    render_open_map_card(building_location_text, geocode_used, regeo, poi_results, noise_summary.get("signals", []))
+    render_open_map_card(building_location_text, geocode_used, regeo, poi_results, noise_summary.get("signals", []), community_row)
     st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
     render_penalty_card(noise_summary)
     st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
