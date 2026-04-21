@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,35 +8,37 @@ from typing import Any
 class ScoreConfig:
     standard_base_score: int = 75
 
-    # 轻量 TNM 化：道路等级权重
-    road_class_weights: dict[str, float] = None  # type: ignore[assignment]
+    # 轻量 TNM 化 v2：道路分层
+    expressway_bands: list[tuple[int, int]] | None = None
+    arterial_bands: list[tuple[int, int]] | None = None
+    secondary_bands: list[tuple[int, int]] | None = None
+    local_bands: list[tuple[int, int]] | None = None
+    internal_bands: list[tuple[int, int]] | None = None
 
-    # 距离分段影响值
-    expressway_bands: list[tuple[int, int]] = None  # type: ignore[assignment]
-    arterial_bands: list[tuple[int, int]] = None  # type: ignore[assignment]
-    secondary_bands: list[tuple[int, int]] = None  # type: ignore[assignment]
-    rail_bands: list[tuple[int, int]] = None  # type: ignore[assignment]
-    school_bands: list[tuple[int, int]] = None  # type: ignore[assignment]
-    hospital_bands: list[tuple[int, int]] = None  # type: ignore[assignment]
-    commercial_bands: list[tuple[int, int]] = None  # type: ignore[assignment]
-    restaurant_bands: list[tuple[int, int]] = None  # type: ignore[assignment]
+    # 其他影响源
+    rail_bands: list[tuple[int, int]] | None = None
+    school_bands: list[tuple[int, int]] | None = None
+    hospital_bands: list[tuple[int, int]] | None = None
+    commercial_bands: list[tuple[int, int]] | None = None
+    restaurant_bands: list[tuple[int, int]] | None = None
 
-    zone_adjustments: dict[str, int] = None  # type: ignore[assignment]
-    locator_confidence_display: dict[str, str] = None  # type: ignore[assignment]
+    zone_adjustments: dict[str, int] | None = None
+    locator_confidence_display: dict[str, str] | None = None
 
     def __post_init__(self) -> None:
-        if self.road_class_weights is None:
-            object.__setattr__(self, "road_class_weights", {
-                "expressway": 1.00,   # 高速 / 快速路
-                "arterial":   0.72,   # 主干路
-                "secondary":  0.42,   # 次干路
-            })
+        # 更符合常识的非线性距离分段：
+        # 高等级道路影响上限更高、衰减更慢；低等级道路只在近距离明显。
         if self.expressway_bands is None:
-            object.__setattr__(self, "expressway_bands", [(120, 18), (250, 12), (500, 6)])
+            object.__setattr__(self, "expressway_bands", [(50, 16), (100, 14), (150, 12), (250, 9), (400, 6), (600, 3)])
         if self.arterial_bands is None:
-            object.__setattr__(self, "arterial_bands", [(80, 10), (180, 6), (350, 3)])
+            object.__setattr__(self, "arterial_bands", [(30, 10), (60, 8), (100, 6), (180, 4), (300, 2)])
         if self.secondary_bands is None:
-            object.__setattr__(self, "secondary_bands", [(60, 4), (120, 2), (220, 1)])
+            object.__setattr__(self, "secondary_bands", [(20, 5), (40, 4), (80, 2), (150, 1)])
+        if self.local_bands is None:
+            object.__setattr__(self, "local_bands", [(10, 2), (20, 1), (35, 1), (60, 0)])
+        if self.internal_bands is None:
+            object.__setattr__(self, "internal_bands", [(8, 1), (15, 1), (30, 0)])
+
         if self.rail_bands is None:
             object.__setattr__(self, "rail_bands", [(150, 6), (300, 3), (500, 1)])
         if self.school_bands is None:
@@ -48,12 +49,14 @@ class ScoreConfig:
             object.__setattr__(self, "commercial_bands", [(80, 5), (160, 3)])
         if self.restaurant_bands is None:
             object.__setattr__(self, "restaurant_bands", [(120, 4), (250, 2)])
+
         if self.zone_adjustments is None:
             object.__setattr__(self, "zone_adjustments", {
-                "street_front": -8,   # 临街首排
-                "edge_building": -3,  # 边缘楼栋
-                "central": 0,         # 小区中央
-                "quiet_inner": 6,     # 内排安静区
+                "street_front": -8,
+                "edge_building": -3,
+                "central": 0,
+                "quiet_inner": 6,
+                "compound_approx": 0,
             })
         if self.locator_confidence_display is None:
             object.__setattr__(self, "locator_confidence_display", {
@@ -66,12 +69,14 @@ class ScoreConfig:
 
 class ScoreEngine:
     """
-    轻量 TNM 化 v1
+    轻量 TNM 化 v2
 
-    当前主页面仍然传入一个已汇总的 noise_penalty，
-    所以 final_score() 继续兼容旧接口。
-    但这里已经把 v1 参数表固化进来，便于后续逐步把
-    道路/轨道/生活源从“单一总影响值”拆成结构化输入。
+    设计原则：
+    1. 先给不同等级道路一个非线性距离分段值
+    2. 每个等级只取最近一条代表路，避免重复叠加把分数算爆
+    3. 高速/快速路 100 米影响应明显大于 10 米小路影响
+    4. 小路/内部路只做弱影响，更适合拉开边缘感，而不是压过主路
+    5. final_score() 继续兼容旧页面接口
     """
 
     def __init__(self, config: ScoreConfig | None = None) -> None:
@@ -95,65 +100,84 @@ class ScoreEngine:
                 return score
         return 0
 
-    def weighted_road_score(self, road_class: str, distance_m: float | None) -> int:
-        class_key = str(road_class or "").strip().lower()
-        weight = self.cfg.road_class_weights.get(class_key, 0.0)
-        if class_key == "expressway":
-            base = self.band_score(distance_m, self.cfg.expressway_bands)
-        elif class_key == "arterial":
-            base = self.band_score(distance_m, self.cfg.arterial_bands)
-        else:
-            base = self.band_score(distance_m, self.cfg.secondary_bands)
-        return round(base * weight)
+    def road_impact_scores(
+        self,
+        nearest_expressway_dist: Any = None,
+        nearest_arterial_dist: Any = None,
+        nearest_secondary_dist: Any = None,
+        nearest_local_dist: Any = None,
+        nearest_internal_dist: Any = None,
+    ) -> dict[str, int]:
+        expressway_score = self.band_score(self._coerce_float(nearest_expressway_dist), self.cfg.expressway_bands)
+        arterial_score = self.band_score(self._coerce_float(nearest_arterial_dist), self.cfg.arterial_bands)
+        secondary_score = self.band_score(self._coerce_float(nearest_secondary_dist), self.cfg.secondary_bands)
+        local_score = self.band_score(self._coerce_float(nearest_local_dist), self.cfg.local_bands)
+        internal_score = self.band_score(self._coerce_float(nearest_internal_dist), self.cfg.internal_bands)
+
+        # 小路 + 内部路总上限，避免安静小区因为路网密而被算爆
+        local_internal_total = min(local_score + internal_score, 4)
+
+        road_impact = expressway_score + arterial_score + secondary_score + local_internal_total
+        return {
+            "expressway_impact": expressway_score,
+            "arterial_impact": arterial_score,
+            "secondary_impact": secondary_score,
+            "local_impact": local_score,
+            "internal_impact": internal_score,
+            "local_internal_total": local_internal_total,
+            "road_impact": road_impact,
+        }
 
     def source_impact_scores(
         self,
-        nearest_expressway_dist: float | None = None,
-        nearest_arterial_dist: float | None = None,
-        nearest_secondary_dist: float | None = None,
-        nearest_rail_dist: float | None = None,
-        nearest_school_dist: float | None = None,
-        nearest_hospital_dist: float | None = None,
-        nearest_commercial_dist: float | None = None,
-        nearest_restaurant_dist: float | None = None,
+        nearest_expressway_dist: Any = None,
+        nearest_arterial_dist: Any = None,
+        nearest_secondary_dist: Any = None,
+        nearest_local_dist: Any = None,
+        nearest_internal_dist: Any = None,
+        nearest_rail_dist: Any = None,
+        nearest_school_dist: Any = None,
+        nearest_hospital_dist: Any = None,
+        nearest_commercial_dist: Any = None,
+        nearest_restaurant_dist: Any = None,
     ) -> dict[str, int]:
-        road_impact = (
-            self.weighted_road_score("expressway", nearest_expressway_dist)
-            + self.weighted_road_score("arterial", nearest_arterial_dist)
-            + self.weighted_road_score("secondary", nearest_secondary_dist)
+        road_items = self.road_impact_scores(
+            nearest_expressway_dist=nearest_expressway_dist,
+            nearest_arterial_dist=nearest_arterial_dist,
+            nearest_secondary_dist=nearest_secondary_dist,
+            nearest_local_dist=nearest_local_dist,
+            nearest_internal_dist=nearest_internal_dist,
         )
-        rail_impact = self.band_score(nearest_rail_dist, self.cfg.rail_bands)
-        school_impact = self.band_score(nearest_school_dist, self.cfg.school_bands)
-        hospital_impact = self.band_score(nearest_hospital_dist, self.cfg.hospital_bands)
-        commercial_impact = self.band_score(nearest_commercial_dist, self.cfg.commercial_bands)
-        restaurant_impact = self.band_score(nearest_restaurant_dist, self.cfg.restaurant_bands)
+        rail_impact = self.band_score(self._coerce_float(nearest_rail_dist), self.cfg.rail_bands)
+        school_impact = self.band_score(self._coerce_float(nearest_school_dist), self.cfg.school_bands)
+        hospital_impact = self.band_score(self._coerce_float(nearest_hospital_dist), self.cfg.hospital_bands)
+        commercial_impact = self.band_score(self._coerce_float(nearest_commercial_dist), self.cfg.commercial_bands)
+        restaurant_impact = self.band_score(self._coerce_float(nearest_restaurant_dist), self.cfg.restaurant_bands)
+
+        external_environment_impact = round(
+            road_items["road_impact"]
+            + rail_impact
+            + school_impact
+            + hospital_impact
+            + commercial_impact
+            + restaurant_impact
+        )
         return {
-            "road_impact": road_impact,
+            **road_items,
             "rail_impact": rail_impact,
             "school_impact": school_impact,
             "hospital_impact": hospital_impact,
             "commercial_impact": commercial_impact,
             "restaurant_impact": restaurant_impact,
-            "external_environment_impact": round(
-                road_impact
-                + rail_impact
-                + school_impact
-                + hospital_impact
-                + commercial_impact
-                + restaurant_impact
-            ),
+            "external_environment_impact": external_environment_impact,
         }
 
     def building_adjustment(self, build_year: Any) -> int:
         year = self._coerce_float(build_year)
         if year is None:
             return 0
-
-        # 2025 后：按你要求提升静音要求权重
-        # 这里不宣称“官方直接给分”，只是模型层的 v1 启动参数。
         if year >= 2025:
             return 5
-        # “第四代住宅”在没有稳定官方字段前，先用新建年份做代理。
         if year >= 2015:
             return 3
         if year >= 2005:
@@ -173,7 +197,6 @@ class ScoreEngine:
         return -6
 
     def normalize_zone_adjustment(self, zone_adjust: Any) -> int:
-        # 兼容旧页面：当前 app 仍直接传 adjustment_score 数值进来。
         value = self._coerce_float(zone_adjust)
         return int(round(value or 0))
 
@@ -193,34 +216,29 @@ class ScoreEngine:
         兼容旧接口：
         final_score(DEFAULT_BASE_SCORE, zone_adjust, noise_penalty, far_ratio, build_year)
 
-        说明：
-        - standard_base_score：标准基准分
-        - zone_adjust：空间缓冲项/楼栋位置调整
-        - noise_penalty：当前页面已经汇总好的外部环境影响值
-        - far_ratio：容积率代理值
-        - build_year：楼龄/新建标准代理值
+        当前页面仍然先把外部环境影响汇总成一个 total_penalty/noise_penalty 再传进来。
+        这版 score_engine 先把道路/轨道/生活源的参数骨架升级好，后续页面再逐步切到结构化输入。
         """
         base_score = int(round(self._coerce_float(standard_base_score) or self.cfg.standard_base_score))
         zone_adjust_value = self.normalize_zone_adjustment(zone_adjust)
         build_bonus = self.building_adjustment(build_year)
         density_adjustment_value = self.density_adjustment(far_ratio)
-        density_penalty = abs(density_adjustment_value)
         external_environment_impact = int(round(self._coerce_float(noise_penalty) or 0))
 
         final_score = self.clamp_score(
             base_score
             + zone_adjust_value
             + build_bonus
-            + min(density_adjustment_value, 0)
-            + max(density_adjustment_value, 0)
+            + density_adjustment_value
             - external_environment_impact
         )
+
         return {
             "base_score": base_score,
             "zone_adjust": zone_adjust_value,
             "build_bonus": build_bonus,
             "density_adjustment": density_adjustment_value,
-            "density_penalty": density_penalty,
+            "density_penalty": abs(min(density_adjustment_value, 0)),
             "noise_penalty": external_environment_impact,
             "external_environment_impact": external_environment_impact,
             "final_score": final_score,
