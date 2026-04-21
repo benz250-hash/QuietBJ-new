@@ -1,0 +1,5 @@
+community_name,building_token,zone_type,locator_confidence_override,notes
+国奥村,14号楼,central,high,更偏小区内部
+国奥村,16号楼,edge_building,high,靠东侧小路
+新龙城,6号楼,street_front,high,靠外侧主路
+清华科技园,6号楼,compound_approx,low,当前仅做园区级近似定位
