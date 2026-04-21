@@ -915,6 +915,7 @@ def main() -> None:
 
     community_repo = CommunityRepository(str(COMMUNITIES_FILE))
     zone_repo = ZoneRepository(str(COMMUNITY_ZONES_FILE))
+    building_overrides = load_building_overrides()
     amap = AMapProvider(get_amap_api_key(st.secrets))
     score_engine = ScoreEngine()
 
