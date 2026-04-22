@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import csv
 import re
 from pathlib import Path
@@ -1059,6 +1060,48 @@ def render_debug_card(geocode_used: dict[str, Any] | None, building_location_tex
             st.json(regeo if regeo else {"note": "无"})
 
 
+def render_cache_tools(community_row: dict[str, Any]) -> None:
+    cache = load_building_cache(COMMUNITY_BUILDING_CACHE_FILE)
+    community_name = str(community_row.get("community_name", "")).strip()
+    current_buildings = get_cached_buildings(cache, community_name) if community_name else []
+    cache_json = json.dumps(cache, ensure_ascii=False, indent=2)
+    current_payload = {
+        "community_name": community_name,
+        "building_count": len(current_buildings),
+        "buildings": current_buildings,
+    }
+    current_json = json.dumps(current_payload, ensure_ascii=False, indent=2)
+
+    with st.expander("缓存管理", expanded=False):
+        c1, c2, c3 = st.columns([1.25, 1.25, 1.0])
+        with c1:
+            st.download_button(
+                "下载全部缓存 JSON",
+                data=cache_json,
+                file_name="community_building_cache.json",
+                mime="application/json",
+                use_container_width=True,
+            )
+        with c2:
+            st.download_button(
+                "导出当前小区缓存",
+                data=current_json,
+                file_name=f"{community_name or 'current_community'}_cache.json",
+                mime="application/json",
+                use_container_width=True,
+            )
+        with c3:
+            if st.button("清空缓存", type="secondary", use_container_width=True):
+                save_building_cache({}, COMMUNITY_BUILDING_CACHE_FILE)
+                st.success("缓存已清空。")
+                st.rerun()
+
+        st.markdown(
+            f"<div class='subtle' style='margin-top:10px;'>当前缓存文件：<strong>{COMMUNITY_BUILDING_CACHE_FILE.name}</strong>｜已缓存楼栋数：<strong>{sum(len(v.get('buildings', [])) for v in cache.values())}</strong>｜当前小区缓存：<strong>{len(current_buildings)}</strong></div>",
+            unsafe_allow_html=True,
+        )
+
+
 # ---------- app ----------
 def main() -> None:
     if "last_query" not in st.session_state:
@@ -1152,6 +1195,8 @@ def main() -> None:
     render_position_card(result, zone_labels, zone_key)
     st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
     render_debug_card(geocode_used, building_location_text, community_row, tip_list, regeo)
+    st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
+    render_cache_tools(community_row)
 
 
 if __name__ == "__main__":
